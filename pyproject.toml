@@ -1,0 +1,32 @@
+[project]
+name = "agentdbg"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Zafar", email = "z.tahirov@gmail.com" }
+]
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.129.0",
+    "pyyaml>=6.0.3",
+    "typer>=0.23.1",
+    "uvicorn>=0.40.0",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.0.2",
+]
+
+[project.scripts]
+agentdbg = "agentdbg.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.10.2,<0.11.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "agentdbg"
+module-root = "."
