@@ -17,6 +17,7 @@ from typing import Any, Callable, TypeVar
 from agentdbg.config import AgentDbgConfig, load_config
 from agentdbg.constants import REDACTED_MARKER, TRUNCATED_MARKER
 from agentdbg.events import EventType, new_event, utc_now_iso_ms_z
+from agentdbg.loopdetect import detect_loop, pattern_key as loop_pattern_key
 from agentdbg.storage import append_event, create_run, finalize_run
 
 _RECURSION_LIMIT = 10
@@ -24,17 +25,20 @@ _RECURSION_LIMIT = 10
 _run_id_var: ContextVar[str | None] = ContextVar("agentdbg_run_id", default=None)
 _counts_var: ContextVar[dict | None] = ContextVar("agentdbg_counts", default=None)
 _config_var: ContextVar[AgentDbgConfig | None] = ContextVar("agentdbg_config", default=None)
+_event_window_var: ContextVar[list[dict] | None] = ContextVar("agentdbg_event_window", default=None)
+_loop_emitted_var: ContextVar[set[str] | None] = ContextVar("agentdbg_loop_emitted", default=None)
 
 # Implicit run: stored so atexit can finalize (RUN_END + run.json status).
 _implicit_run_id: str | None = None
 _implicit_counts: dict | None = None
 _implicit_config: AgentDbgConfig | None = None
 _implicit_started_at: str | None = None
+_implicit_event_window: list[dict] = []
+_implicit_loop_emitted: set[str] = set()
 
 
 def _default_counts() -> dict[str, int]:
     """Default counts dict; keys match SPEC run.json and RUN_END summary."""
-    # TODO: when loop detection is implemented, increment counts["loop_warnings"] when emitting LOOP_WARNING
     return {
         "llm_calls": 0,
         "tool_calls": 0,
@@ -122,6 +126,7 @@ def _apply_redaction_truncation(payload: Any, meta: Any, config: AgentDbgConfig)
 def _finalize_implicit_run() -> None:
     """Atexit hook: write RUN_END and finalize run.json for the implicit run, if any."""
     global _implicit_run_id, _implicit_counts, _implicit_config, _implicit_started_at
+    global _implicit_event_window, _implicit_loop_emitted
     if _implicit_run_id is None or _implicit_config is None or _implicit_started_at is None:
         return
     run_id = _implicit_run_id
@@ -132,6 +137,8 @@ def _finalize_implicit_run() -> None:
     _implicit_counts = None
     _implicit_config = None
     _implicit_started_at = None
+    _implicit_event_window = []
+    _implicit_loop_emitted = set()
     try:
         payload = _run_end_payload("ok", counts, started_at)
         ev = new_event(EventType.RUN_END, run_id, "run_end", payload)
@@ -144,23 +151,26 @@ def _finalize_implicit_run() -> None:
 atexit.register(_finalize_implicit_run)
 
 
-def _ensure_run() -> tuple[str, dict, AgentDbgConfig] | None:
+def _ensure_run() -> tuple[str, dict, AgentDbgConfig, list[dict], set[str]] | None:
     """
-    Return (run_id, counts, config) for the current run, or None if no run.
+    Return (run_id, counts, config, event_window, loop_emitted) for the current run, or None if no run.
     If AGENTDBG_IMPLICIT_RUN=1 and no run is active, create an implicit run (once per process)
     and return it. Implicit run never sets contextvars, so it does not hijack subsequent
     traced runs or leave a "current run" for the rest of the process.
     """
     global _implicit_run_id, _implicit_counts, _implicit_config, _implicit_started_at
+    global _implicit_event_window, _implicit_loop_emitted
     run_id = _run_id_var.get()
     if run_id is not None:
         counts = _counts_var.get()
         config = _config_var.get()
         if counts is not None and config is not None:
-            return (run_id, counts, config)
+            window = _event_window_var.get()
+            emitted = _loop_emitted_var.get()
+            return (run_id, counts, config, window if window is not None else [], emitted if emitted is not None else set())
     if os.environ.get("AGENTDBG_IMPLICIT_RUN", "").strip() == "1":
         if _implicit_run_id is not None and _implicit_counts is not None and _implicit_config is not None:
-            return (_implicit_run_id, _implicit_counts, _implicit_config)
+            return (_implicit_run_id, _implicit_counts, _implicit_config, _implicit_event_window, _implicit_loop_emitted)
         config = load_config()
         meta = create_run("implicit", config)
         run_id = meta["run_id"]
@@ -170,6 +180,8 @@ def _ensure_run() -> tuple[str, dict, AgentDbgConfig] | None:
         _implicit_counts = counts
         _implicit_config = config
         _implicit_started_at = started_at
+        _implicit_event_window = []
+        _implicit_loop_emitted = set()
         payload = {
             "run_name": "implicit",
             "python_version": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
@@ -179,7 +191,7 @@ def _ensure_run() -> tuple[str, dict, AgentDbgConfig] | None:
         }
         ev = new_event(EventType.RUN_START, run_id, "implicit", payload)
         append_event(run_id, ev, config)
-        return (run_id, counts, config)
+        return (run_id, counts, config, _implicit_event_window, _implicit_loop_emitted)
     return None
 
 
@@ -249,6 +261,8 @@ def trace(f: F) -> F:
         token_run = _run_id_var.set(run_id)
         token_counts = _counts_var.set(counts)
         token_config = _config_var.set(config)
+        token_window = _event_window_var.set([])
+        token_emitted = _loop_emitted_var.set(set())
         try:
             payload = _run_start_payload(run_name)
             ev = new_event(EventType.RUN_START, run_id, run_name or "run", payload)
@@ -276,8 +290,33 @@ def trace(f: F) -> F:
             _run_id_var.reset(token_run)
             _counts_var.reset(token_counts)
             _config_var.reset(token_config)
+            _event_window_var.reset(token_window)
+            _loop_emitted_var.reset(token_emitted)
 
     return inner  # type: ignore[return-value]
+
+
+def _maybe_emit_loop_warning(
+    run_id: str,
+    counts: dict[str, int],
+    config: AgentDbgConfig,
+    window: list[dict],
+    emitted: set[str],
+) -> None:
+    """
+    If the last N events contain a repeating pattern not yet emitted, emit LOOP_WARNING,
+    increment counts["loop_warnings"], and add the pattern key to emitted.
+    """
+    payload = detect_loop(window, config.loop_window, config.loop_repetitions)
+    if payload is None:
+        return
+    key = loop_pattern_key(payload)
+    if key in emitted:
+        return
+    ev = new_event(EventType.LOOP_WARNING, run_id, "loop_warning", payload)
+    append_event(run_id, ev, config)
+    counts["loop_warnings"] = counts.get("loop_warnings", 0) + 1
+    emitted.add(key)
 
 
 def record_llm_call(
@@ -297,7 +336,7 @@ def record_llm_call(
     ctx = _ensure_run()
     if ctx is None:
         return
-    run_id, counts, config = ctx
+    run_id, counts, config, window, emitted = ctx
     payload = {
         "model": model,
         "prompt": prompt,
@@ -311,6 +350,10 @@ def record_llm_call(
     ev = new_event(EventType.LLM_CALL, run_id, model, payload, meta=safe_meta)
     append_event(run_id, ev, config)
     counts["llm_calls"] = counts.get("llm_calls", 0) + 1
+    window.append(ev)
+    if len(window) > config.loop_window:
+        window[:] = window[-config.loop_window:]
+    _maybe_emit_loop_warning(run_id, counts, config, window, emitted)
 
 
 def record_tool_call(
@@ -328,7 +371,7 @@ def record_tool_call(
     ctx = _ensure_run()
     if ctx is None:
         return
-    run_id, counts, config = ctx
+    run_id, counts, config, window, emitted = ctx
     payload = {
         "tool_name": name,
         "args": args,
@@ -340,6 +383,10 @@ def record_tool_call(
     ev = new_event(EventType.TOOL_CALL, run_id, name, payload, meta=safe_meta)
     append_event(run_id, ev, config)
     counts["tool_calls"] = counts.get("tool_calls", 0) + 1
+    window.append(ev)
+    if len(window) > config.loop_window:
+        window[:] = window[-config.loop_window:]
+    _maybe_emit_loop_warning(run_id, counts, config, window, emitted)
 
 
 def record_state(
@@ -354,8 +401,12 @@ def record_state(
     ctx = _ensure_run()
     if ctx is None:
         return
-    run_id, counts, config = ctx
+    run_id, counts, config, window, emitted = ctx
     payload = {"state": state, "diff": diff}
     payload, safe_meta = _apply_redaction_truncation(payload, meta or {}, config)
     ev = new_event(EventType.STATE_UPDATE, run_id, "state", payload, meta=safe_meta)
     append_event(run_id, ev, config)
+    window.append(ev)
+    if len(window) > config.loop_window:
+        window[:] = window[-config.loop_window:]
+    _maybe_emit_loop_warning(run_id, counts, config, window, emitted)
