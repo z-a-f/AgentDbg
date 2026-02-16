@@ -32,7 +32,11 @@ uv pip install -e .
 
 ## Quickstart
 
-### 1) Instrument your agent
+Get a full run timeline in a few minutes: instrument one function, run it, then open the viewer.
+
+### 1. Instrument your agent
+
+Wrap your agent entrypoint with `@trace` and record LLM and tool activity:
 
 ```python
 from agentdbg import trace, record_tool_call, record_llm_call
@@ -54,13 +58,24 @@ def run_agent():
 run_agent()
 ```
 
-### 2) View the timeline
+Traces are written under `~/.agentdbg/runs/<run_id>/` (or `AGENTDBG_DATA_DIR`).
+
+### 2. View the timeline
 
 ```bash
 agentdbg view
 ```
 
-This starts a local server (default `127.0.0.1:8712`) and opens the UI.
+Starts a local server (default `127.0.0.1:8712`) and opens the UI. Use **List runs** and **View a specific run** below to pick a run.
+
+### Try the example
+
+From the repo root (after `uv sync` and `uv pip install -e .`):
+
+```bash
+python examples/minimal_agent/main.py
+agentdbg view
+```
 
 
 ## CLI
