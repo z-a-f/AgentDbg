@@ -1,6 +1,7 @@
 [project]
 name = "agentdbg"
-version = "0.1.0"
+# version = "0.1.0"
+dynamic = ["version"]
 description = "Add your description here"
 readme = "README.md"
 authors = [
@@ -14,23 +15,26 @@ dependencies = [
     "uvicorn>=0.40.0",
 ]
 
-[project.optional-dependencies]
-langchain = ["langchain>=1.2.10"]
-
 [dependency-groups]
 dev = [
     "httpx>=0.28.1",
+    "pre-commit>=4.5.1",
     "pytest>=9.0.2",
     "ruff>=0.15.1",
 ]
+
+[project.optional-dependencies]
+langchain = ["langchain>=1.2.10"]
 
 [project.scripts]
 agentdbg = "agentdbg.cli:main"
 
 [build-system]
-requires = ["uv_build>=0.10.2,<0.11.0"]
-build-backend = "uv_build"
+# requires = ["uv_build>=0.10.2,<0.11.0"]
+# build-backend = "uv_build"
+requires = ["hatchling>=1.28.0,<1.29.0"]
+build-backend = "hatchling.build"
 
-[tool.uv.build-backend]
-module-name = "agentdbg"
-module-root = "."
+[tool.hatch.version]
+path = "agentdbg/version.py"
+pattern = "^version = \"(?P<version>.*)\"$"
