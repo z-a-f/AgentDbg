@@ -24,3 +24,4 @@ def run_agent():
 if __name__ == "__main__":
     run_agent()
     # Run data is under ~/.agentdbg/runs/<run_id>/ (or AGENTDBG_DATA_DIR)
+    print("Run data is under ~/.agentdbg/runs/<run_id>/ (or AGENTDBG_DATA_DIR)")
