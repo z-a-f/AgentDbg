@@ -1,5 +1,6 @@
 ---
 alwaysApply: true
+description:
 ---
 
 Read `SPEC.md` in full. You must follow it exactly.
@@ -9,8 +10,5 @@ Constraints:
 * Do not add new event types beyond those listed in SPEC.
 * Do not implement replay or eval CI.
 * Do not change repo layout.
-* CLI entrypoint must be `agentdbg.cli:main` (do not put `main()` in `__init__.py`).
-* Storage must use `~/.agentdbg/runs/<run_id>/events.jsonl` and **required** `run.json` metadata file per run.
-* Redaction must be recursive.
 * Provide type hints, docstrings, and minimal but solid error handling.
-  Work in small commits: only generate the files I ask for in each step.
+* Work in small commits: only generate the files I ask for in each step.
