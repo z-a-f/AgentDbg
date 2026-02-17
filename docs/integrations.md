@@ -20,7 +20,7 @@ AgentDbg is **framework-agnostic** at the core. The SDK is a thin layer: you cal
 pip install agentdbg[langchain]
 ```
 
-If `langchain-core` is not installed, `AgentDbgLangChainCallbackHandler` is `None` at import time. Attempting to instantiate it will raise a `TypeError`; a clearer error message is planned.
+If `langchain-core` is not installed, importing the integration (e.g. `from agentdbg.integrations import AgentDbgLangChainCallbackHandler`) raises a clear `ImportError` with instructions to install `pip install "agentdbg[langchain]"` or `pip install langchain`. The integration is optional; the core package does not depend on it.
 
 **Usage:**
 

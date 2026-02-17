@@ -2,16 +2,71 @@
 Tests for LangChain integration. Skip if langchain is not installed.
 Uses temp dir; no network calls. Asserts TOOL_CALL and LLM_CALL events.
 """
+import sys
+
 import pytest
+
+from agentdbg.config import load_config
+from agentdbg.events import EventType
+from agentdbg.storage import load_events, load_run_meta
+from tests.conftest import get_latest_run_id
+
+
+def test_langchain_integration_raises_clear_error_when_deps_missing():
+    """When optional deps are missing, integration raises a clear error (no None, no NoneType)."""
+    # Simulate missing langchain_core: access to .callbacks raises ImportError
+    class FakeLangChainCore:
+        def __getattr__(self, name: str):
+            raise ImportError("No module named 'langchain_core.callbacks'")
+
+    to_restore = {}
+    for key in list(sys.modules.keys()):
+        if key == "langchain_core" or key.startswith("langchain_core."):
+            to_restore[key] = sys.modules.pop(key, None)
+    for key in ("agentdbg.integrations.langchain", "agentdbg.integrations"):
+        if key in sys.modules:
+            to_restore[key] = sys.modules.pop(key)
+
+    try:
+        sys.modules["langchain_core"] = FakeLangChainCore()
+        with pytest.raises(ImportError) as exc_info:
+            from agentdbg.integrations import AgentDbgLangChainCallbackHandler  # noqa: F401
+        msg = str(exc_info.value)
+        assert "langchain" in msg.lower(), f"message should mention langchain: {msg!r}"
+        assert "pip install" in msg.lower(), f"message should mention pip install: {msg!r}"
+        assert "[langchain]" in msg, f"message should mention extra [langchain]: {msg!r}"
+    finally:
+        for key in ("langchain_core", "agentdbg.integrations.langchain", "agentdbg.integrations"):
+            sys.modules.pop(key, None)
+        sys.modules.update(to_restore)
+
+
+def test_langchain_integration_does_not_break_core_import():
+    """Core agentdbg import must not crash when LangChain optional deps are missing."""
+    class FakeLangChainCore:
+        def __getattr__(self, name: str):
+            raise ImportError("No module named 'langchain_core.callbacks'")
+
+    to_restore = {}
+    for key in list(sys.modules.keys()):
+        if key == "langchain_core" or key.startswith("langchain_core."):
+            to_restore[key] = sys.modules.pop(key, None)
+
+    try:
+        sys.modules["langchain_core"] = FakeLangChainCore()
+        import agentdbg  # noqa: F401
+        assert agentdbg.__version__
+    finally:
+        sys.modules.pop("langchain_core", None)
+        for k, v in to_restore.items():
+            if v is not None:
+                sys.modules[k] = v
+
 
 pytest.importorskip("langchain_core")
 
 from agentdbg import trace
-from agentdbg.config import load_config
-from agentdbg.events import EventType
 from agentdbg.integrations.langchain import AgentDbgLangChainCallbackHandler
-from agentdbg.storage import load_events, load_run_meta
-from tests.conftest import get_latest_run_id
 
 
 @trace

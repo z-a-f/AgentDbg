@@ -7,11 +7,20 @@ from typing import Any
 
 from agentdbg.tracing import record_llm_call, record_tool_call
 
-# LangChain is optional; import at runtime so agentdbg works without it.
+
+class MissingOptionalDependencyError(ImportError):
+    """Raised when the LangChain/LangGraph integration is used without optional deps installed."""
+
+
 try:
     from langchain_core.callbacks import BaseCallbackHandler
-except ImportError:
-    BaseCallbackHandler = None  # type: ignore[misc, assignment]
+except ImportError as e:
+    raise MissingOptionalDependencyError(
+        "The LangChain/LangGraph integration requires optional dependencies that are not installed. "
+        "Missing: langchain (langchain_core). "
+        "Install with: pip install \"agentdbg[langchain]\" or pip install langchain. "
+        "This integration is optional; the core agentdbg package does not depend on it."
+    ) from e
 
 
 def _model_from_serialized(serialized: dict[str, Any]) -> str:
@@ -91,147 +100,142 @@ def _response_from_llm_result(response: Any) -> tuple[Any, Any]:
     return response_text, usage
 
 
-if BaseCallbackHandler is not None:
+class AgentDbgLangChainCallbackHandler(BaseCallbackHandler):
+    """
+    LangChain callback handler that records LLM and tool calls to the active
+    AgentDbg run via record_llm_call and record_tool_call.
+    """
 
-    class AgentDbgLangChainCallbackHandler(BaseCallbackHandler):
-        """
-        LangChain callback handler that records LLM and tool calls to the active
-        AgentDbg run via record_llm_call and record_tool_call.
-        """
+    def __init__(self) -> None:
+        super().__init__()
+        self._pending_llm: dict[str, dict[str, Any]] = {}
+        self._pending_tool: dict[str, dict[str, Any]] = {}
+        self._key_counter = 0
 
-        def __init__(self) -> None:
-            super().__init__()
-            self._pending_llm: dict[str, dict[str, Any]] = {}
-            self._pending_tool: dict[str, dict[str, Any]] = {}
-            self._key_counter = 0
+    def _key(self, run_id: Any = None, parent_run_id: Any = None, **kwargs: Any) -> str:
+        """Composite key for pending calls; reduces collisions and handles missing run_id."""
+        if run_id is not None:
+            return f"{run_id}:{parent_run_id or ''}"
+        if parent_run_id is not None:
+            return f"parent:{parent_run_id}"
+        self._key_counter += 1
+        return f"fallback:{self._key_counter}"
 
-        def _key(self, run_id: Any = None, parent_run_id: Any = None, **kwargs: Any) -> str:
-            """Composite key for pending calls; reduces collisions and handles missing run_id."""
-            if run_id is not None:
-                return f"{run_id}:{parent_run_id or ''}"
-            if parent_run_id is not None:
-                return f"parent:{parent_run_id}"
-            self._key_counter += 1
-            return f"fallback:{self._key_counter}"
+    def on_llm_start(
+        self,
+        serialized: dict[str, Any],
+        prompts: list[str],
+        *,
+        run_id: Any = None,
+        parent_run_id: Any = None,
+        **kwargs: Any,
+    ) -> None:
+        key = self._key(run_id=run_id, parent_run_id=parent_run_id, **kwargs)
+        self._pending_llm[key] = {
+            "model": _model_from_serialized(serialized),
+            "prompt": _prompt_from_prompts(prompts),
+        }
 
-        def on_llm_start(
-            self,
-            serialized: dict[str, Any],
-            prompts: list[str],
-            *,
-            run_id: Any = None,
-            parent_run_id: Any = None,
-            **kwargs: Any,
-        ) -> None:
-            key = self._key(run_id=run_id, parent_run_id=parent_run_id, **kwargs)
-            self._pending_llm[key] = {
-                "model": _model_from_serialized(serialized),
-                "prompt": _prompt_from_prompts(prompts),
-            }
+    def on_chat_model_start(
+        self,
+        serialized: dict[str, Any],
+        messages: list[Any],
+        *,
+        run_id: Any = None,
+        parent_run_id: Any = None,
+        **kwargs: Any,
+    ) -> None:
+        key = self._key(run_id=run_id, parent_run_id=parent_run_id, **kwargs)
+        self._pending_llm[key] = {
+            "model": _model_from_serialized(serialized),
+            "prompt": _messages_as_prompt(messages),
+        }
 
-        def on_chat_model_start(
-            self,
-            serialized: dict[str, Any],
-            messages: list[Any],
-            *,
-            run_id: Any = None,
-            parent_run_id: Any = None,
-            **kwargs: Any,
-        ) -> None:
-            key = self._key(run_id=run_id, parent_run_id=parent_run_id, **kwargs)
-            self._pending_llm[key] = {
-                "model": _model_from_serialized(serialized),
-                "prompt": _messages_as_prompt(messages),
-            }
+    def on_llm_end(
+        self,
+        response: Any,
+        *,
+        run_id: Any = None,
+        parent_run_id: Any = None,
+        **kwargs: Any,
+    ) -> None:
+        key = self._key(run_id=run_id, parent_run_id=parent_run_id, **kwargs)
+        pending = self._pending_llm.pop(key, None)
+        model = (pending or {}).get("model") or "unknown"
+        prompt = (pending or {}).get("prompt") if pending else None
+        response_text, usage = _response_from_llm_result(response)
+        record_llm_call(
+            model=model or "unknown",
+            prompt=prompt,
+            response=response_text,
+            usage=usage,
+            provider="langchain",
+        )
 
-        def on_llm_end(
-            self,
-            response: Any,
-            *,
-            run_id: Any = None,
-            parent_run_id: Any = None,
-            **kwargs: Any,
-        ) -> None:
-            key = self._key(run_id=run_id, parent_run_id=parent_run_id, **kwargs)
-            pending = self._pending_llm.pop(key, None)
-            model = (pending or {}).get("model") or "unknown"
-            prompt = (pending or {}).get("prompt") if pending else None
-            response_text, usage = _response_from_llm_result(response)
-            record_llm_call(
-                model=model or "unknown",
-                prompt=prompt,
-                response=response_text,
-                usage=usage,
-                provider="langchain",
-            )
+    def on_llm_error(
+        self,
+        error: BaseException,
+        *,
+        run_id: Any = None,
+        parent_run_id: Any = None,
+        **kwargs: Any,
+    ) -> None:
+        key = self._key(run_id=run_id, parent_run_id=parent_run_id, **kwargs)
+        pending = self._pending_llm.pop(key, None)
+        model = (pending or {}).get("model") or "unknown"
+        prompt = (pending or {}).get("prompt") if pending else None
+        record_llm_call(
+            model=model,
+            prompt=prompt,
+            response=None,
+            usage=None,
+            status="error",
+            error=error,
+            provider="langchain",
+        )
 
-        def on_llm_error(
-            self,
-            error: BaseException,
-            *,
-            run_id: Any = None,
-            parent_run_id: Any = None,
-            **kwargs: Any,
-        ) -> None:
-            key = self._key(run_id=run_id, parent_run_id=parent_run_id, **kwargs)
-            pending = self._pending_llm.pop(key, None)
-            model = (pending or {}).get("model") or "unknown"
-            prompt = (pending or {}).get("prompt") if pending else None
-            record_llm_call(
-                model=model,
-                prompt=prompt,
-                response=None,
-                usage=None,
-                status="error",
-                error=error,
-                provider="langchain",
-            )
+    def on_tool_start(
+        self,
+        serialized: dict[str, Any],
+        input_str: str,
+        *,
+        run_id: Any = None,
+        parent_run_id: Any = None,
+        **kwargs: Any,
+    ) -> None:
+        key = self._key(run_id=run_id, parent_run_id=parent_run_id, **kwargs)
+        name = _tool_name_from_serialized(serialized)
+        try:
+            import json
+            args = json.loads(input_str) if input_str.strip() else {}
+        except Exception:
+            args = input_str if input_str else None
+        self._pending_tool[key] = {"name": name, "args": args}
 
-        def on_tool_start(
-            self,
-            serialized: dict[str, Any],
-            input_str: str,
-            *,
-            run_id: Any = None,
-            parent_run_id: Any = None,
-            **kwargs: Any,
-        ) -> None:
-            key = self._key(run_id=run_id, parent_run_id=parent_run_id, **kwargs)
-            name = _tool_name_from_serialized(serialized)
-            try:
-                import json
-                args = json.loads(input_str) if input_str.strip() else {}
-            except Exception:
-                args = input_str if input_str else None
-            self._pending_tool[key] = {"name": name, "args": args}
+    def on_tool_end(
+        self,
+        output: str,
+        *,
+        run_id: Any = None,
+        parent_run_id: Any = None,
+        **kwargs: Any,
+    ) -> None:
+        key = self._key(run_id=run_id, parent_run_id=parent_run_id, **kwargs)
+        pending = self._pending_tool.pop(key, None)
+        name = (pending or {}).get("name", "unknown")
+        args = (pending or {}).get("args") if pending else None
+        record_tool_call(name=name, args=args, result=output, status="ok")
 
-        def on_tool_end(
-            self,
-            output: str,
-            *,
-            run_id: Any = None,
-            parent_run_id: Any = None,
-            **kwargs: Any,
-        ) -> None:
-            key = self._key(run_id=run_id, parent_run_id=parent_run_id, **kwargs)
-            pending = self._pending_tool.pop(key, None)
-            name = (pending or {}).get("name", "unknown")
-            args = (pending or {}).get("args") if pending else None
-            record_tool_call(name=name, args=args, result=output, status="ok")
-
-        def on_tool_error(
-            self,
-            error: BaseException,
-            *,
-            run_id: Any = None,
-            parent_run_id: Any = None,
-            **kwargs: Any,
-        ) -> None:
-            key = self._key(run_id=run_id, parent_run_id=parent_run_id, **kwargs)
-            pending = self._pending_tool.pop(key, None)
-            name = (pending or {}).get("name", "unknown")
-            args = (pending or {}).get("args") if pending else None
-            record_tool_call(name=name, args=args, result=None, status="error", error=error)
-
-else:
-    AgentDbgLangChainCallbackHandler = None  # type: ignore[misc, assignment]
+    def on_tool_error(
+        self,
+        error: BaseException,
+        *,
+        run_id: Any = None,
+        parent_run_id: Any = None,
+        **kwargs: Any,
+    ) -> None:
+        key = self._key(run_id=run_id, parent_run_id=parent_run_id, **kwargs)
+        pending = self._pending_tool.pop(key, None)
+        name = (pending or {}).get("name", "unknown")
+        args = (pending or {}).get("args") if pending else None
+        record_tool_call(name=name, args=args, result=None, status="error", error=error)
