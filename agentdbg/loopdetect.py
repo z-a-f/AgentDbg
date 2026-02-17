@@ -34,7 +34,7 @@ def detect_loop(
     """
     Detect a consecutively repeating signature subsequence near the end of the run.
 
-    Only considers the last `window` events. Finds the smallest pattern length m (>= 2)
+    Only considers the last `window` events. Finds the smallest pattern length m (>= 1)
     such that the last m*repetitions signatures form the same m-length block repeated
     `repetitions` times. Returns a LOOP_WARNING payload or None.
     """
@@ -47,10 +47,10 @@ def detect_loop(
 
     # m * repetitions must fit in the window
     max_m = n // repetitions
-    if max_m < 2:
+    if max_m < 1:
         return None
 
-    for m in range(2, max_m + 1):
+    for m in range(1, max_m + 1):
         L = m * repetitions
         if L > n:
             continue

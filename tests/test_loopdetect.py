@@ -94,3 +94,30 @@ def test_detect_loop_no_loop_returns_none():
         _make_event("e", "LLM_CALL", {"model": "m2"}),
     ]
     assert detect_loop(events, window=10, repetitions=3) is None
+
+
+def test_loop_warning_triggers_on_single_event_repetition():
+    """A single event signature repeating >= repetitions times triggers LOOP_WARNING (m=1)."""
+    repetitions = 3
+    events = [
+        _make_event("e-0", "TOOL_CALL", {"tool_name": "search_db"}),
+        _make_event("e-1", "TOOL_CALL", {"tool_name": "search_db"}),
+        _make_event("e-2", "TOOL_CALL", {"tool_name": "search_db"}),
+    ]
+    payload = detect_loop(events, window=12, repetitions=repetitions)
+    assert payload is not None, "m=1 repetition must be detected"
+    assert payload["pattern"] == "TOOL_CALL:search_db"
+    assert payload["repetitions"] == repetitions
+    assert len(payload["evidence_event_ids"]) == 1 * repetitions
+    assert payload["evidence_event_ids"] == ["e-0", "e-1", "e-2"]
+    # pattern_key should encode the single-event pattern
+    assert pattern_key(payload) == "TOOL_CALL:search_db|3"
+
+
+def test_loop_warning_does_not_trigger_when_below_repetitions():
+    """Only 2 repeats when repetitions=3 → no LOOP_WARNING."""
+    events = [
+        _make_event("e-0", "TOOL_CALL", {"tool_name": "search_db"}),
+        _make_event("e-1", "TOOL_CALL", {"tool_name": "search_db"}),
+    ]
+    assert detect_loop(events, window=12, repetitions=3) is None
