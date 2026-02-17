@@ -4,6 +4,9 @@ Typer CLI for AgentDbg (SPEC §9).
 Commands: list, export, view. Entrypoint: main() for console script agentdbg.cli:main.
 """
 import json
+import socket
+import threading
+import time
 import webbrowser
 from pathlib import Path
 
@@ -19,6 +22,24 @@ EXIT_NOT_FOUND = 2
 EXIT_INTERNAL = 10
 
 app = typer.Typer(help="AgentDbg CLI: list runs, export, or view in browser.")
+
+
+def _wait_for_port(host: str, port: int, timeout_s: float = 5.0) -> bool:
+    """Block until *host*:*port* accepts a TCP connection, or *timeout_s* elapses.
+
+    Used to avoid opening the browser before the viewer server is reachable
+    (race-condition prevention).  Pure-stdlib, no new dependencies.
+
+    Returns ``True`` if the port became reachable, ``False`` on timeout.
+    """
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        try:
+            with socket.create_connection((host, port), timeout=0.1):
+                return True
+        except OSError:
+            time.sleep(0.05)
+    return False
 
 
 def _run_table_rows(runs: list[dict]) -> list[list[str]]:
@@ -146,19 +167,31 @@ def view_cmd(
             }
             print(json.dumps(out, ensure_ascii=False))
 
-        if not no_browser:
-            webbrowser.open(url)
-
         import uvicorn
 
         fastapi_app = create_app()
         log_level = "warning" if json_out else "info"
-        uvicorn.run(
-            fastapi_app,
-            host=host,
-            port=port,
-            log_level=log_level,
+
+        # Start the server in a daemon thread so we can gate the browser
+        # open on actual TCP readiness (prevents "connection refused" race).
+        server_thread = threading.Thread(
+            target=uvicorn.run,
+            kwargs=dict(app=fastapi_app, host=host, port=port, log_level=log_level),
+            daemon=True,
         )
+        server_thread.start()
+
+        if not no_browser:
+            if _wait_for_port(host, port):
+                webbrowser.open(url)
+            else:
+                typer.echo(
+                    f"Server did not become ready in time. Open manually: {url}",
+                    err=True,
+                )
+
+        # Block the main thread until the server exits or the user interrupts.
+        server_thread.join()
     except Exit:
         raise
     except KeyboardInterrupt:

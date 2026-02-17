@@ -4,7 +4,6 @@ requires-python = ">=3.10"
 
 [[package]]
 name = "agentdbg"
-version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
