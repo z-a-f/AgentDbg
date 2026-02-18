@@ -1,7 +1,7 @@
 """
 Minimal LangChain example: @trace plus a chain that triggers one LLM and one tool callback.
 Uses fake LLM (no network). Run from repo root:
-  uv run --optional langchain python -m examples.langchain_minimal.main
+  uv run --extra langchain python -m examples.langchain_minimal.main
 Then: agentdbg view
 """
 from agentdbg import trace
@@ -10,6 +10,8 @@ from agentdbg.integrations import AgentDbgLangChainCallbackHandler
 # Optional: only import LangChain when running this example
 from langchain_core.language_models.fake import FakeListLLM
 from langchain_core.tools import tool
+
+
 @tool
 def lookup(query: str) -> str:
     """Look up something (stub tool for demo)."""
