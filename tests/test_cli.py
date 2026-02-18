@@ -36,6 +36,37 @@ def test_export_missing_run_exit_two(empty_data_dir):
     assert result.exit_code == 2
 
 
+def test_export_accepts_run_id_prefix(empty_data_dir):
+    """agentdbg export with run_id prefix resolves to full run and writes correct JSON."""
+    from agentdbg.config import load_config
+
+    config = load_config()
+    run_id = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"
+    run_dir = config.data_dir / "runs" / run_id
+    run_dir.mkdir(parents=True)
+    (run_dir / "run.json").write_text(json.dumps({
+        "spec_version": "0.1",
+        "run_id": run_id,
+        "run_name": "prefix_test",
+        "started_at": "2026-01-01T00:00:00.000Z",
+        "ended_at": None,
+        "duration_ms": 0,
+        "status": "ok",
+        "counts": {"llm_calls": 0, "tool_calls": 0, "errors": 0, "loop_warnings": 0},
+        "last_event_ts": None,
+    }))
+    (run_dir / "events.jsonl").write_text("")
+
+    prefix = run_id[:8]
+    tmpfile = empty_data_dir / "exported.json"
+    result = runner.invoke(app, ["export", prefix, "--out", str(tmpfile)])
+    assert result.exit_code == 0
+    data = json.loads(tmpfile.read_text())
+    assert data["run"]["run_id"] == run_id
+    assert data["run"]["run_name"] == "prefix_test"
+    assert "events" in data
+
+
 def test_list_json_outputs_valid_json_spec_version_and_runs(empty_data_dir):
     """agentdbg list --json outputs valid JSON with keys spec_version and runs."""
     result = runner.invoke(app, ["list", "--json"])

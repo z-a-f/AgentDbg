@@ -100,12 +100,16 @@ def list_cmd(
 
 @app.command("export")
 def export_cmd(
-    run_id: str = typer.Argument(..., help="Run ID to export"),
+    run_id: str = typer.Argument(..., help="Run ID or prefix to export"),
     out: Path = typer.Option(..., "--out", "-o", path_type=Path, help="Output JSON file path"),
 ) -> None:
     """Export a run to a single JSON file (run metadata + events array)."""
     try:
         config = load_config()
+        try:
+            run_id = storage.resolve_run_id(run_id, config)
+        except FileNotFoundError:
+            raise Exit(EXIT_NOT_FOUND)
         try:
             run_meta = storage.load_run_meta(run_id, config)
         except (ValueError, FileNotFoundError):
