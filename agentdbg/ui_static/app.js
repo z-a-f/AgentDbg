@@ -150,7 +150,7 @@ async function loadRuns() {
           return;
         }
       }
-      selectRun(toSelect, { initialLoad: true });
+      selectRun(toSelect, { initialLoad: true, forceRefresh: true });
     }
     updateCopyButtonsState();
   } catch (e) {
@@ -169,7 +169,7 @@ function escapeHtml(s) {
 
 function selectRun(runId, options) {
   const opts = options || {};
-  if (runId === currentRunId && !opts.fromPopState) return;
+  if (runId === currentRunId && !opts.fromPopState && !opts.forceRefresh) return;
   currentRunId = runId;
   if (fetchAbort) {
     fetchAbort.abort();
