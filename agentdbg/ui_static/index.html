@@ -159,6 +159,15 @@
     }
     .btn-refresh:hover { background: var(--border); color: var(--text); }
     .btn-refresh:disabled { opacity: 0.5; cursor: not-allowed; }
+    .run-not-found-banner {
+      background: var(--warning-bg);
+      border: 1px solid var(--warning-border);
+      border-radius: 6px;
+      padding: 0.5rem 0.75rem;
+      margin-bottom: 1rem;
+      font-size: 0.9rem;
+      color: var(--text);
+    }
   </style>
 </head>
 <body>
@@ -173,6 +182,7 @@
       <div id="run-list-error" class="error" style="display:none;"></div>
     </aside>
     <main class="main">
+      <div id="run-not-found-banner" class="run-not-found-banner" style="display:none;">Run not found. Showing latest run.</div>
       <div id="run-header" class="run-header" style="display:none;"></div>
       <div id="timeline" class="timeline">
         <div id="timeline-toolbar" class="timeline-toolbar" style="display:none;">
@@ -200,11 +210,39 @@
 
     let currentEvents = [];
     let currentFilter = 'all';
+    let lastRuns = [];
+    let currentRunId = null;
+    let fetchAbort = null;
+    const escapeDiv = document.createElement('div');
 
     function getRunIdFromUrl() {
-      const params = new URLSearchParams(window.location.search);
-      return params.get('run_id') || null;
+      const url = new URL(window.location.href);
+      const q = url.searchParams.get('run_id');
+      if (q) return q;
+      const parts = url.pathname.split('/').filter(Boolean);
+      if (parts.length === 0) return null;
+      const last = parts[parts.length - 1];
+      const looksLikeId = /^[0-9a-fA-F-]{8,}$/.test(last);
+      return looksLikeId ? last : null;
     }
+
+    function setUrlRunId(runId, { replace = false } = {}) {
+      if (!runId) return;
+      const url = new URL(window.location.href);
+      url.pathname = '/';
+      url.searchParams.set('run_id', runId);
+      const method = replace ? 'replaceState' : 'pushState';
+      window.history[method]({ run_id: runId }, '', url.toString());
+    }
+
+    (function canonicalizeOnBoot() {
+      const url = new URL(window.location.href);
+      const hasQuery = url.searchParams.has('run_id');
+      const runIdFromPath = getRunIdFromUrl();
+      if (!hasQuery && runIdFromPath) {
+        setUrlRunId(runIdFromPath, { replace: true });
+      }
+    })();
 
     function showRunListError(msg) {
       runListErrorEl.textContent = msg;
@@ -212,6 +250,13 @@
     }
     function hideRunListError() {
       runListErrorEl.style.display = 'none';
+    }
+    const runNotFoundBannerEl = document.getElementById('run-not-found-banner');
+    function showRunNotFoundBanner() {
+      if (runNotFoundBannerEl) runNotFoundBannerEl.style.display = 'block';
+    }
+    function hideRunNotFoundBanner() {
+      if (runNotFoundBannerEl) runNotFoundBannerEl.style.display = 'none';
     }
     function setRunListLoading(loading) {
       if (loading) {
@@ -239,19 +284,23 @@
         if (!r.ok) throw new Error(r.statusText || 'Failed to load runs');
         const data = await r.json();
         const runs = data.runs || [];
+        lastRuns = runs;
         runListEl.innerHTML = '';
-        runs.forEach((run) => {
-          const div = document.createElement('div');
-          div.className = 'run-item';
-          div.dataset.runId = run.run_id;
-          const name = run.run_name || run.run_id?.slice(0, 8) || '—';
-          const meta = [run.started_at || '', run.status || '', run.duration_ms != null ? run.duration_ms + ' ms' : ''].filter(Boolean).join(' · ');
-          div.innerHTML = '<span class="run-name">' + escapeHtml(name) + '</span><br><span class="run-meta">' + escapeHtml(meta) + '</span>';
-          div.addEventListener('click', () => selectRun(run.run_id));
-          runListEl.appendChild(div);
-        });
-        if (runs.length === 0) runListEl.innerHTML = '<div class="empty">No runs yet.</div>';
-        else {
+        if (runs.length === 0) {
+          runListEl.innerHTML = '<div class="empty">No runs yet.</div>';
+        } else {
+          const frag = document.createDocumentFragment();
+          runs.forEach((run) => {
+            const div = document.createElement('div');
+            div.className = 'run-item';
+            div.dataset.runId = run.run_id;
+            const name = run.run_name || run.run_id?.slice(0, 8) || '—';
+            const meta = [run.started_at || '', run.status || '', run.duration_ms != null ? run.duration_ms + ' ms' : ''].filter(Boolean).join(' · ');
+            div.innerHTML = '<span class="run-name">' + escapeHtml(name) + '</span><br><span class="run-meta">' + escapeHtml(meta) + '</span>';
+            div.addEventListener('click', () => selectRun(run.run_id));
+            frag.appendChild(div);
+          });
+          runListEl.appendChild(frag);
           const urlRunId = getRunIdFromUrl();
           let toSelect = runs[0].run_id;
           if (urlRunId) {
@@ -259,8 +308,13 @@
             const byPrefix = runs.find((r) => r.run_id && r.run_id.startsWith(urlRunId));
             if (exact) toSelect = exact.run_id;
             else if (byPrefix) toSelect = byPrefix.run_id;
+            else {
+              showRunNotFoundBanner();
+              selectRun(runs[0].run_id, { fromFallback: true });
+              return;
+            }
           }
-          selectRun(toSelect);
+          selectRun(toSelect, { initialLoad: true });
         }
       } catch (e) {
         showRunListError(e.message || 'Failed to load runs');
@@ -271,28 +325,41 @@
 
     function escapeHtml(s) {
       if (s == null) return '';
-      const div = document.createElement('div');
-      div.textContent = s;
-      return div.innerHTML;
+      escapeDiv.textContent = s;
+      return escapeDiv.innerHTML;
     }
 
-    function selectRun(runId) {
-      document.querySelectorAll('.run-item').forEach((el) => {
+    function selectRun(runId, options) {
+      const opts = options || {};
+      if (runId === currentRunId && !opts.fromPopState) return;
+      currentRunId = runId;
+      if (fetchAbort) {
+        fetchAbort.abort();
+        fetchAbort = null;
+      }
+      fetchAbort = new AbortController();
+      const signal = fetchAbort.signal;
+      if (!opts.fromPopState) {
+        setUrlRunId(runId, { replace: !!(opts.fromFallback || opts.initialLoad) });
+      }
+      runListEl.querySelectorAll('.run-item').forEach((el) => {
         el.classList.toggle('selected', el.dataset.runId === runId);
       });
-      loadRunMeta(runId);
-      loadEvents(runId);
+      if (!opts.fromFallback) hideRunNotFoundBanner();
+      loadRunMeta(runId, signal);
+      loadEvents(runId, signal);
     }
 
-    async function loadRunMeta(runId) {
+    async function loadRunMeta(runId, signal) {
       try {
-        const r = await fetch('/api/runs/' + encodeURIComponent(runId));
+        const r = await fetch('/api/runs/' + encodeURIComponent(runId), { signal });
         if (r.status === 404) {
           runHeaderEl.style.display = 'none';
           return;
         }
         if (!r.ok) throw new Error(r.statusText || 'Failed to load run');
         const run = await r.json();
+        if (signal?.aborted) return;
         const counts = run.counts || {};
         const parts = [
           run.run_name ? 'Run: ' + run.run_name : '',
@@ -304,6 +371,7 @@
         runHeaderEl.innerHTML = '<h2>' + escapeHtml(run.run_name || runId.slice(0, 8)) + '</h2><div class="meta">' + escapeHtml(parts.join(' · ')) + '</div>';
         runHeaderEl.style.display = 'block';
       } catch (e) {
+        if (e.name === 'AbortError') return;
         runHeaderEl.style.display = 'none';
       }
     }
@@ -378,24 +446,46 @@
     }
 
     function renderEvents() {
-      timelineEventsEl.innerHTML = '';
       const toShow = currentFilter === 'all' ? currentEvents : currentEvents.filter((ev) => (ev.event_type || '') === currentFilter);
-      toShow.forEach((ev) => timelineEventsEl.appendChild(buildEventEl(ev)));
+      const frag = document.createDocumentFragment();
+      toShow.forEach((ev) => frag.appendChild(buildEventEl(ev)));
+      timelineEventsEl.innerHTML = '';
+      timelineEventsEl.appendChild(frag);
     }
 
-    async function loadEvents(runId) {
+    async function loadEvents(runId, signal) {
       hideTimelineError();
       timelineEmptyEl.style.display = 'none';
       timelineEventsEl.innerHTML = '<div class="empty">Loading…</div>';
       timelineToolbarEl.style.display = 'none';
       try {
-        const r = await fetch('/api/runs/' + encodeURIComponent(runId) + '/events');
+        const r = await fetch('/api/runs/' + encodeURIComponent(runId) + '/events', { signal });
         if (r.status === 404) {
+          showRunNotFoundBanner();
+          if (fetchAbort) {
+            fetchAbort.abort();
+            fetchAbort = null;
+          }
+          if (lastRuns.length > 0) {
+            selectRun(lastRuns[0].run_id, { fromFallback: true });
+            return;
+          }
+          const listRes = await fetch('/api/runs', { signal });
+          if (listRes.ok) {
+            const listData = await listRes.json();
+            const runs = listData.runs || [];
+            lastRuns = runs;
+            if (runs.length > 0) {
+              selectRun(runs[0].run_id, { fromFallback: true });
+              return;
+            }
+          }
           showTimelineError('Run not found.');
           return;
         }
         if (!r.ok) throw new Error(r.statusText || 'Failed to load events');
         const data = await r.json();
+        if (signal?.aborted) return;
         const events = data.events || [];
         currentEvents = events;
         currentFilter = 'all';
@@ -408,9 +498,16 @@
         renderToolbar(events);
         renderEvents();
       } catch (e) {
+        if (e.name === 'AbortError') return;
         showTimelineError(e.message || 'Failed to load events');
       }
     }
+
+    window.addEventListener('popstate', () => {
+      const runId = getRunIdFromUrl();
+      const inList = runId && Array.from(runListEl.querySelectorAll('.run-item')).some((el) => el.dataset.runId === runId);
+      if (inList) selectRun(runId, { fromPopState: true });
+    });
 
     if (btnRefreshEl) btnRefreshEl.addEventListener('click', () => loadRuns());
     loadRuns();
