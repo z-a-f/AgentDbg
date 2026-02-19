@@ -5,7 +5,7 @@ Run with: python -m examples.minimal_agent.main (from repo root) or set AGENTDBG
 from agentdbg import record_llm_call, record_tool_call, trace
 
 
-@trace
+@trace(name="minimal agent")
 def run_agent():
     """Simulate a minimal agent: one tool call, one LLM call."""
     record_tool_call(

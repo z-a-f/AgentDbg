@@ -7,7 +7,7 @@ Config is loaded once at app creation and cached on app.state.
 """
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse
 
 import agentdbg.storage as storage
@@ -72,30 +72,33 @@ def create_app() -> FastAPI:
         return FileResponse(FAVICON_PATH, media_type="image/svg+xml")
 
     @app.get("/styles.css")
-    def serve_styles() -> FileResponse:
+    def serve_styles() -> Response:
         """Serve UI stylesheet."""
         if not UI_STYLES_PATH.is_file():
             raise HTTPException(status_code=404, detail="styles not found")
-        return FileResponse(UI_STYLES_PATH, media_type="text/css")
+        response = FileResponse(UI_STYLES_PATH, media_type="text/css")
+        response.headers["Cache-Control"] = "no-cache"
+        return response
 
     @app.get("/app.js")
-    def serve_app_js() -> FileResponse:
+    def serve_app_js() -> Response:
         """Serve UI application script."""
         if not UI_APP_JS_PATH.is_file():
             raise HTTPException(status_code=404, detail="app.js not found")
-        return FileResponse(UI_APP_JS_PATH, media_type="application/javascript")
+        response = FileResponse(UI_APP_JS_PATH, media_type="application/javascript")
+        response.headers["Cache-Control"] = "no-cache"
+        return response
 
     @app.get("/")
-    def serve_ui() -> FileResponse:
+    def serve_ui() -> Response:
         """Serve the static HTML UI with content-type text/html."""
         if not UI_INDEX_PATH.is_file():
             raise HTTPException(
                 status_code=404,
                 detail="UI not found: agentdbg/ui_static/index.html is missing",
             )
-        return FileResponse(
-            UI_INDEX_PATH,
-            media_type="text/html",
-        )
+        response = FileResponse(UI_INDEX_PATH, media_type="text/html")
+        response.headers["Cache-Control"] = "no-cache"
+        return response
 
     return app
