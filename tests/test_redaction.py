@@ -7,10 +7,12 @@ from unittest.mock import patch
 
 import pytest
 
+from pathlib import Path
+
 from agentdbg.constants import REDACTED_MARKER, TRUNCATED_MARKER
-from agentdbg.config import load_config
+from agentdbg.config import load_config, AgentDbgConfig
 from agentdbg.events import EventType
-from agentdbg.tracing import record_tool_call, trace, traced_run
+from agentdbg.tracing import record_tool_call, _redact_and_truncate, trace, traced_run
 from agentdbg.storage import load_events, list_runs
 
 
@@ -18,6 +20,34 @@ def test_redaction_constants_unchanged():
     """Guards against accidental refactors."""
     assert REDACTED_MARKER == "__REDACTED__"
     assert TRUNCATED_MARKER == "__TRUNCATED__"
+
+
+def test_max_field_truncation():
+    """Strings over AGENTDBG_MAX_FIELD_BYTES are truncated and suffixed with __TRUNCATED__."""
+    max_bytes = 100
+    cfg = AgentDbgConfig(
+        redact=True,
+        redact_keys=["token"],
+        max_field_bytes=max_bytes,
+        loop_window=12,
+        loop_repetitions=3,
+        data_dir=Path("."),
+    )
+    short = "under limit"
+    assert len(short.encode("utf-8")) <= max_bytes
+    assert _redact_and_truncate(short, cfg) == short
+
+    long_str = "x" * (max_bytes + 1)
+    result = _redact_and_truncate(long_str, cfg)
+    assert result.endswith(TRUNCATED_MARKER)
+    assert len(result.encode("utf-8")) <= max_bytes
+
+    # Nested dict: long value in payload is truncated
+    payload = {"prompt": "a" * (max_bytes + 10), "other": "short"}
+    out = _redact_and_truncate(payload, cfg)
+    assert out["prompt"].endswith(TRUNCATED_MARKER)
+    assert len(out["prompt"].encode("utf-8")) <= max_bytes
+    assert out["other"] == "short"
 
 
 @pytest.fixture
