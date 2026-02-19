@@ -18,7 +18,7 @@ def lookup(query: str) -> str:
     return f"result for: {query}"
 
 
-@trace
+@trace(name="langchain minimal example")
 def run_agent():
     """Run a minimal chain: one tool call, one LLM call; both traced via AgentDbg handler."""
     handler = AgentDbgLangChainCallbackHandler()

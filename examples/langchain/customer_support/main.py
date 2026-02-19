@@ -60,7 +60,7 @@ def get_config(thread_id: str, handler: Any):
 
 from agentdbg import trace
 
-@trace
+@trace(name="langchain customer support example")
 def run_graph(graph, questions: list[str], config: dict):
     from .utilities import _print_event
     log = logging.getLogger(__name__)

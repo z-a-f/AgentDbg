@@ -27,7 +27,7 @@ def _ensure_demo_defaults() -> None:
     # os.environ.setdefault("AGENTDBG_REDACT", "1")
 
 
-@trace
+@trace(name="pure-python demo")
 def run_demo() -> None:
     record_state(
         state={"phase": "start", "goal": "show agent timeline debugging"},
