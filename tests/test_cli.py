@@ -67,6 +67,30 @@ def test_export_accepts_run_id_prefix(empty_data_dir):
     assert "events" in data
 
 
+def test_export_success_path_writes_run_and_events(empty_data_dir):
+    """agentdbg export with real run (create_run + append_event) exits 0 and writes run + events."""
+    from agentdbg.config import load_config
+    from agentdbg.events import EventType, new_event
+    from agentdbg.storage import append_event, create_run
+    from tests.conftest import get_latest_run_id
+
+    config = load_config()
+    create_run("export_success_run", config)
+    run_id = get_latest_run_id(config)
+    ev = new_event(EventType.TOOL_CALL, run_id, "test_tool", {"tool_name": "test_tool", "args": {}})
+    append_event(run_id, ev, config)
+
+    tmpfile = empty_data_dir / "export_success.json"
+    result = runner.invoke(app, ["export", run_id, "--out", str(tmpfile)])
+    assert result.exit_code == 0
+    data = json.loads(tmpfile.read_text())
+    assert data["spec_version"] == "0.1"
+    assert data["run"]["run_id"] == run_id
+    assert data["run"]["run_name"] == "export_success_run"
+    assert len(data["events"]) == 1
+    assert data["events"][0].get("event_type") == EventType.TOOL_CALL.value
+
+
 def test_list_json_outputs_valid_json_spec_version_and_runs(empty_data_dir):
     """agentdbg list --json outputs valid JSON with keys spec_version and runs."""
     result = runner.invoke(app, ["list", "--json"])
@@ -76,6 +100,28 @@ def test_list_json_outputs_valid_json_spec_version_and_runs(empty_data_dir):
     assert "runs" in data
     assert data["spec_version"] == "0.1"
     assert isinstance(data["runs"], list)
+
+
+def test_list_with_actual_runs_shows_runs(empty_data_dir):
+    """agentdbg list with real runs shows run_id/run_name in text output and in --json runs."""
+    from agentdbg.config import load_config
+    from agentdbg.storage import create_run
+    from tests.conftest import get_latest_run_id
+
+    config = load_config()
+    create_run("list_me_run", config)
+    run_id = get_latest_run_id(config)
+
+    result = runner.invoke(app, ["list"])
+    assert result.exit_code == 0
+    assert run_id in result.output or "list_me_run" in result.output
+
+    result_json = runner.invoke(app, ["list", "--json"])
+    assert result_json.exit_code == 0
+    data = json.loads(result_json.output)
+    assert len(data["runs"]) >= 1
+    assert data["runs"][0]["run_id"] == run_id
+    assert data["runs"][0]["run_name"] == "list_me_run"
 
 
 # ---------------------------------------------------------------------------
