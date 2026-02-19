@@ -32,7 +32,7 @@ def _require_langchain() -> None:
         sys.exit(2)
 
 
-@trace
+@trace(name="langchain demo")
 def run_demo() -> None:
     from agentdbg.integrations import AgentDbgLangChainCallbackHandler
 
