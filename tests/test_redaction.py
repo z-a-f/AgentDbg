@@ -234,3 +234,46 @@ def test_redact_substring_match():
     assert out["api_key"] == REDACTED_MARKER
     assert out["prefix_api_key_suffix"] == REDACTED_MARKER
     assert out["other"] == "unchanged"
+
+
+def test_exception_message_secret_not_in_events_jsonl(temp_data_dir, redact_message_and_stack_env):
+    """Secret in exception message must NOT appear anywhere in events.jsonl file content."""
+    secret = "sk-leaked-api-key-xyz789"
+    assert secret not in REDACTED_MARKER
+
+    @trace
+    def run_that_leaks():
+        raise ValueError(f"Auth failed: API key {secret} is invalid")
+
+    with pytest.raises(ValueError):
+        run_that_leaks()
+
+    config = load_config()
+    runs = list_runs(limit=1, config=config)
+    assert runs
+    run_id = runs[0]["run_id"]
+    events_path = config.data_dir / "runs" / run_id / "events.jsonl"
+    raw_content = events_path.read_text(encoding="utf-8")
+
+    assert secret not in raw_content, f"Secret {secret!r} must not appear in events.jsonl"
+
+
+def test_argv_api_key_not_in_events_jsonl(temp_data_dir):
+    """argv containing --api-key=... must NOT appear in events.jsonl (value redacted or omitted)."""
+    secret = "sk-secret-1234"
+
+    with patch("sys.argv", ["main.py", f"--api-key={secret}", "--verbose"]):
+        @trace
+        def run_quiet():
+            pass
+
+        run_quiet()
+
+    config = load_config()
+    runs = list_runs(limit=1, config=config)
+    assert runs
+    run_id = runs[0]["run_id"]
+    events_path = config.data_dir / "runs" / run_id / "events.jsonl"
+    raw_content = events_path.read_text(encoding="utf-8")
+
+    assert secret not in raw_content, f"API key value {secret!r} must not appear in events.jsonl"
