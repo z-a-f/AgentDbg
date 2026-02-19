@@ -164,3 +164,73 @@ def test_run_start_argv_redacted(temp_data_dir):
     argv = payload.get("argv")
     assert isinstance(argv, list)
     assert argv == ["test_script.py", f"--api-key={REDACTED_MARKER}", "--verbose"]
+
+
+def _redact_cfg(keys: list[str]) -> AgentDbgConfig:
+    """Minimal config with redaction enabled and given redact_keys."""
+    return AgentDbgConfig(
+        redact=True,
+        redact_keys=keys,
+        max_field_bytes=1000,
+        loop_window=12,
+        loop_repetitions=3,
+        data_dir=Path("."),
+    )
+
+
+def test_redact_nested_dict():
+    """Nested dicts: sensitive keys at any depth are redacted; structure and non-matching keys preserved."""
+    cfg = _redact_cfg(["token", "api_key"])
+    payload = {
+        "query": "hello",
+        "headers": {
+            "Authorization": "Bearer xyz",
+            "token": "secret-123",
+            "X-Request-Id": "req-1",
+        },
+        "body": {
+            "user": "alice",
+            "credentials": {
+                "api_key": "sk-live-abc",
+                "region": "us-east-1",
+            },
+        },
+    }
+    out = _redact_and_truncate(payload, cfg)
+    assert out["query"] == "hello"
+    assert out["headers"]["Authorization"] == "Bearer xyz"
+    assert out["headers"]["token"] == REDACTED_MARKER
+    assert out["headers"]["X-Request-Id"] == "req-1"
+    assert out["body"]["user"] == "alice"
+    assert out["body"]["credentials"]["api_key"] == REDACTED_MARKER
+    assert out["body"]["credentials"]["region"] == "us-east-1"
+
+
+def test_redact_case_insensitive():
+    """Key matching is case-insensitive: API_KEY and Token are redacted when redact_keys include api_key, token."""
+    cfg = _redact_cfg(["api_key", "token"])
+    payload = {
+        "API_KEY": "sk-secret",
+        "Token": "bearer-xyz",
+        "normal_key": "keep",
+    }
+    out = _redact_and_truncate(payload, cfg)
+    assert out["API_KEY"] == REDACTED_MARKER
+    assert out["Token"] == REDACTED_MARKER
+    assert out["normal_key"] == "keep"
+
+
+def test_redact_substring_match():
+    """Key matching is substring: my_api_key_here is redacted when redact_keys include api_key."""
+    cfg = _redact_cfg(["api_key"])
+    payload = {
+        "my_api_key_here": "sk-xxx",
+        "api_key": "sk-yyy",
+        "prefix_api_key_suffix": "sk-zzz",
+        "other": "unchanged",
+    }
+    out = _redact_and_truncate(payload, cfg)
+    assert out["my_api_key_here"] == REDACTED_MARKER
+    assert out["api_key"] == REDACTED_MARKER
+    assert out["prefix_api_key_suffix"] == REDACTED_MARKER
+    assert out["other"] == "unchanged"
