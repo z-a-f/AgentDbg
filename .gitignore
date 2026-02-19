@@ -1,6 +1,8 @@
 
 # Instruction sets for AI to follow -- these constantly change
 ai/
+.cursor/
+.cursorignore
 
 # Python-generated files
 **/__pycache__/
@@ -14,5 +16,6 @@ wheels/
 .venv
 
 # Environment variables
+.env*
 .env.local
 .env.secret
