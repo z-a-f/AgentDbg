@@ -37,6 +37,8 @@ langchain-examples = [
 agentdbg = "agentdbg.cli:main"
 
 [build-system]
+# Wheel/sdist include agentdbg/ (and thus agentdbg/ui_static/) by default.
+# Do not add only-include or only-packages that would exclude ui_static.
 requires = ["hatchling>=1.28.0,<1.29.0"]
 build-backend = "hatchling.build"
 
