@@ -34,6 +34,19 @@ A browser tab opens showing every event in the run - tool calls, LLM calls, timi
 
 ---
 
+## Demos and examples
+
+| Example | Path | How to run |
+|--------|------|------------|
+| **Minimal agent** (pure Python) | `examples/minimal_agent/` | `python examples/minimal_agent/main.py` |
+| **LangChain minimal** | `examples/langchain/minimal/` | `uv run --extra langchain python -m examples.langchain.minimal.main` |
+| **LangChain customer support** (advanced) | `examples/langchain/customer_support/` | Set API keys, then `uv run --extra langchain-examples -m examples.langchain.customer_support.main` |
+| **Demos** (short scripts) | `examples/demo/` | `python examples/demo/pure_python.py` or `python examples/demo/langchain.py` |
+
+After any run, open the timeline with `agentdbg view`.
+
+---
+
 ## Documentation
 
 | Page | Description |

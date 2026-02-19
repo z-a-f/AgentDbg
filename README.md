@@ -200,7 +200,7 @@ def run_agent():
     ...
 ```
 
-See `examples/langchain_minimal/` for a runnable example.
+See `examples/langchain/minimal/` for a runnable example.
 
 ### Planned adapters
 
