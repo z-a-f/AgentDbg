@@ -20,7 +20,7 @@ _MAX_JSON_DEPTH = 10
 
 
 class EventType(str, Enum):
-    """Event type enum; values match SPEC §5.2."""
+    """Event type enum."""
 
     RUN_START = "RUN_START"
     RUN_END = "RUN_END"
@@ -66,7 +66,7 @@ def new_event(
     meta: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """
-    Build an event dict with SPEC §5.1 required fields.
+    Build an event dict with required fields.
 
     All events are JSON-serializable. payload and meta are normalized so that
     non-serializable values are converted to strings.

@@ -280,7 +280,7 @@ def _ensure_run() -> tuple[str, dict, AgentDbgConfig, list[dict], set[str]] | No
 
 
 def _run_start_payload(run_name: str | None) -> dict[str, Any]:
-    """Build RUN_START payload per SPEC §5.3."""
+    """Build RUN_START payload."""
     return {
         "run_name": run_name,
         "python_version": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
@@ -291,7 +291,7 @@ def _run_start_payload(run_name: str | None) -> dict[str, Any]:
 
 
 def _run_end_payload(status: str, counts: dict, started_at: str) -> dict[str, Any]:
-    """Build RUN_END payload per SPEC §5.3; duration_ms from started_at to now."""
+    """Build RUN_END payload; duration_ms from started_at to now."""
     now = utc_now_iso_ms_z()
     try:
         start_dt = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
@@ -311,7 +311,7 @@ def _run_end_payload(status: str, counts: dict, started_at: str) -> dict[str, An
 
 
 def _error_payload(exc: BaseException) -> dict[str, Any]:
-    """Build ERROR payload per SPEC §5.3."""
+    """Build ERROR payload."""
     return {
         "error_type": type(exc).__name__,
         "message": str(exc),

@@ -1,5 +1,5 @@
 """
-Typer CLI for AgentDbg (SPEC §9).
+Typer CLI for AgentDbg.
 
 Commands: list, export, view. Entrypoint: main() for console script agentdbg.cli:main.
 """

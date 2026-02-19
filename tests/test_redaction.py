@@ -13,7 +13,7 @@ from agentdbg.storage import load_events, list_runs
 
 
 def test_redaction_constants_unchanged():
-    """Constants match SPEC §7; guards against accidental refactors."""
+    """Guards against accidental refactors."""
     assert REDACTED_MARKER == "__REDACTED__"
     assert TRUNCATED_MARKER == "__TRUNCATED__"
 

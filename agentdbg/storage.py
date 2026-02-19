@@ -1,7 +1,7 @@
 """
 Local storage for AgentDbg runs: run metadata (run.json) and append-only events (events.jsonl).
 
-Per SPEC §6: ~/.agentdbg/runs/<run_id>/ with required run.json and events.jsonl.
+~/.agentdbg/runs/<run_id>/ with required run.json and events.jsonl.
 Uses config.data_dir (default ~/.agentdbg). Stdlib only.
 """
 import json
@@ -19,7 +19,7 @@ SPEC_VERSION = "0.1"
 RUN_JSON = "run.json"
 EVENTS_JSONL = "events.jsonl"
 
-# SPEC §5.1: run_id MUST be UUIDv4. We enforce canonical form (lowercase with hyphens).
+# run_id MUST be UUIDv4. We enforce canonical form (lowercase with hyphens).
 _RUN_ID_MAX_LEN = 36
 
 

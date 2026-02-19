@@ -1,5 +1,5 @@
 """
-Minimal FastAPI server for the local viewer (SPEC §10).
+Minimal FastAPI server for the local viewer.
 
 Serves GET /api/runs, GET /api/runs/{run_id}, GET /api/runs/{run_id}/events,
 and GET / with static index.html. No CORS by default.
