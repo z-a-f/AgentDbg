@@ -5,7 +5,7 @@ Uses temp dir via AGENTDBG_DATA_DIR; env restored by fixture.
 """
 import pytest
 
-from agentdbg import record_llm_call, record_tool_call, trace, traced_run
+from agentdbg import record_llm_call, record_state, record_tool_call, trace, traced_run
 from agentdbg.config import load_config
 from agentdbg.events import EventType
 from agentdbg.storage import load_events, load_run_meta
@@ -208,3 +208,50 @@ def test_traced_run_nested_does_not_create_new_run(temp_data_dir):
     assert run_starts[0].get("payload", {}).get("run_name") == "outer"
     assert len(tool_events) == 1
     assert tool_events[0].get("payload", {}).get("tool_name") == "nested_tool"
+
+
+def test_record_state_inside_trace_writes_state_update_event(temp_data_dir):
+    """record_state inside @trace writes one STATE_UPDATE with state and meta to storage."""
+    @trace
+    def _run():
+        record_state(state={"step": 1, "query": "hello"}, meta={"label": "after_search"})
+
+    _run()
+    config = load_config()
+    run_id = get_latest_run_id(config)
+    events = load_events(run_id, config)
+    state_events = [e for e in events if e.get("event_type") == EventType.STATE_UPDATE.value]
+    assert len(state_events) == 1
+    payload = state_events[0].get("payload", {})
+    assert payload.get("state") == {"step": 1, "query": "hello"}
+    assert state_events[0].get("meta", {}).get("label") == "after_search"
+    assert state_events[0].get("name") == "state"
+
+
+def test_record_state_with_diff(temp_data_dir):
+    """record_state with state and diff stores both in payload."""
+    @trace
+    def _run():
+        record_state(state={"count": 2}, diff={"count": 1})
+
+    _run()
+    config = load_config()
+    run_id = get_latest_run_id(config)
+    events = load_events(run_id, config)
+    state_events = [e for e in events if e.get("event_type") == EventType.STATE_UPDATE.value]
+    assert len(state_events) == 1
+    payload = state_events[0].get("payload", {})
+    assert payload.get("state") == {"count": 2}
+    assert payload.get("diff") == {"count": 1}
+
+
+def test_record_state_no_op_outside_trace(temp_data_dir):
+    """record_state with no active run does not create a run or write events."""
+    with traced_run(name="only_run"):
+        pass
+    record_state(state={"orphan": True})
+    config = load_config()
+    run_id = get_latest_run_id(config)
+    events = load_events(run_id, config)
+    state_events = [e for e in events if e.get("event_type") == EventType.STATE_UPDATE.value]
+    assert len(state_events) == 0
