@@ -75,7 +75,7 @@ def test_server_returns_400_for_invalid_run_id(temp_data_dir):
 def test_server_returns_400_for_invalid_run_id_events(temp_data_dir):
     """GET /api/runs/{run_id}/events with invalid run_id returns 400."""
     client = TestClient(create_app())
-    r = client.get("/api/runs/not-a-uuid")
+    r = client.get("/api/runs/not-a-uuid/events")
     assert r.status_code == 400, r.json()
     assert "invalid run_id" in (r.json().get("detail") or "")
 
