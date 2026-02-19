@@ -44,6 +44,44 @@ _implicit_event_window: list[dict] = []
 _implicit_loop_emitted: set[str] = set()
 
 
+def _entrypoint(func: Callable[..., Any]) -> str:
+    """Human-friendly entrypoint string: path/to/file.py:function_name (relative to cwd when possible)."""
+    try:
+        code = getattr(func, "__code__", None)
+        filename = code.co_filename if code else None
+        if filename:
+            try:
+                rel = os.path.relpath(filename, os.getcwd())
+            except (ValueError, OSError):
+                rel = filename
+            return f"{rel}:{func.__name__}"
+    except Exception:
+        pass
+    return getattr(func, "__name__", None) or "run"
+
+
+def _default_run_name_timestamp() -> str:
+    """Local timestamp for default run names, e.g. 2025-02-18 14:12."""
+    return datetime.now().strftime("%Y-%m-%d %H:%M")
+
+
+def _resolve_run_name(
+    explicit_name: str | None,
+    func: Callable[..., Any] | None,
+) -> str:
+    """
+    Resolve run name by precedence: AGENTDBG_RUN_NAME env, explicit name, default (entrypoint + timestamp).
+    """
+    env_name = os.environ.get("AGENTDBG_RUN_NAME", "").strip()
+    if env_name:
+        return env_name
+    if explicit_name:
+        return explicit_name
+    if func is not None:
+        return f"{_entrypoint(func)} - {_default_run_name_timestamp()}"
+    return f"run - {_default_run_name_timestamp()}"
+
+
 def _default_counts() -> dict[str, int]:
     """Default counts dict; keys match SPEC run.json and RUN_END summary."""
     return {
@@ -217,7 +255,8 @@ def _ensure_run() -> tuple[str, dict, AgentDbgConfig, list[dict], set[str]] | No
         if _implicit_run_id is not None and _implicit_counts is not None and _implicit_config is not None:
             return (_implicit_run_id, _implicit_counts, _implicit_config, _implicit_event_window, _implicit_loop_emitted)
         config = load_config()
-        meta = create_run("implicit", config)
+        run_name = _resolve_run_name("implicit", None)
+        meta = create_run(run_name, config)
         run_id = meta["run_id"]
         counts = _default_counts()
         started_at = meta["started_at"]
@@ -228,13 +267,13 @@ def _ensure_run() -> tuple[str, dict, AgentDbgConfig, list[dict], set[str]] | No
         _implicit_event_window = []
         _implicit_loop_emitted = set()
         payload = {
-            "run_name": "implicit",
+            "run_name": run_name,
             "python_version": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
             "platform": sys.platform,
             "cwd": os.getcwd(),
             "argv": list(sys.argv),
         }
-        ev = new_event(EventType.RUN_START, run_id, "implicit", payload)
+        ev = new_event(EventType.RUN_START, run_id, run_name, payload)
         append_event(run_id, ev, config)
         return (run_id, counts, config, _implicit_event_window, _implicit_loop_emitted)
     return None
@@ -283,62 +322,79 @@ def _error_payload(exc: BaseException) -> dict[str, Any]:
 F = TypeVar("F", bound=Callable[..., Any])
 
 
-def trace(f: F) -> F:
+def trace(
+    f: F | str | None = None,
+    *,
+    name: str | None = None,
+) -> F | Callable[[F], F]:
     """
     Decorator that starts a new run (RUN_START / RUN_END, ERROR on exception)
     when no run is active; otherwise runs the function in the existing run without
     creating a new run or emitting extra run events.
+
+    Usage: @trace, @trace(), @trace("run name"), @trace(name="run name").
+    Run name precedence: AGENTDBG_RUN_NAME env, then explicit name, then default (entrypoint - timestamp).
     """
 
-    @wraps(f)
-    def inner(*args: Any, **kwargs: Any) -> Any:
-        existing_run_id = _run_id_var.get()
-        if existing_run_id is not None:
-            return f(*args, **kwargs)
+    def decorator(func: F, explicit: str | None = None) -> F:
+        _name = explicit if explicit is not None else name
 
-        config = load_config()
-        run_name = getattr(f, "__name__", None) or None
-        meta = create_run(run_name, config)
-        run_id = meta["run_id"]
-        started_at = meta["started_at"]
-        counts = _default_counts()
+        @wraps(func)
+        def inner(*args: Any, **kwargs: Any) -> Any:
+            existing_run_id = _run_id_var.get()
+            if existing_run_id is not None:
+                return func(*args, **kwargs)
 
-        token_run = _run_id_var.set(run_id)
-        token_counts = _counts_var.set(counts)
-        token_config = _config_var.set(config)
-        token_window = _event_window_var.set([])
-        token_emitted = _loop_emitted_var.set(set())
-        try:
-            payload = _run_start_payload(run_name)
-            ev = new_event(EventType.RUN_START, run_id, run_name or "run", payload)
-            append_event(run_id, ev, config)
+            config = load_config()
+            run_name = _resolve_run_name(_name, func)
+            meta = create_run(run_name, config)
+            run_id = meta["run_id"]
+            started_at = meta["started_at"]
+            counts = _default_counts()
 
-            result = f(*args, **kwargs)
+            token_run = _run_id_var.set(run_id)
+            token_counts = _counts_var.set(counts)
+            token_config = _config_var.set(config)
+            token_window = _event_window_var.set([])
+            token_emitted = _loop_emitted_var.set(set())
+            try:
+                payload = _run_start_payload(run_name)
+                ev = new_event(EventType.RUN_START, run_id, run_name, payload)
+                append_event(run_id, ev, config)
 
-            payload_end = _run_end_payload("ok", counts, started_at)
-            ev_end = new_event(EventType.RUN_END, run_id, "run_end", payload_end)
-            append_event(run_id, ev_end, config)
-            finalize_run(run_id, "ok", counts, config)
-            return result
-        except BaseException as e:
-            err_payload = _error_payload(e)
-            err_ev = new_event(EventType.ERROR, run_id, type(e).__name__, err_payload)
-            append_event(run_id, err_ev, config)
-            counts["errors"] = counts.get("errors", 0) + 1
+                result = func(*args, **kwargs)
 
-            payload_end = _run_end_payload("error", counts, started_at)
-            ev_end = new_event(EventType.RUN_END, run_id, "run_end", payload_end)
-            append_event(run_id, ev_end, config)
-            finalize_run(run_id, "error", counts, config)
-            raise
-        finally:
-            _run_id_var.reset(token_run)
-            _counts_var.reset(token_counts)
-            _config_var.reset(token_config)
-            _event_window_var.reset(token_window)
-            _loop_emitted_var.reset(token_emitted)
+                payload_end = _run_end_payload("ok", counts, started_at)
+                ev_end = new_event(EventType.RUN_END, run_id, "run_end", payload_end)
+                append_event(run_id, ev_end, config)
+                finalize_run(run_id, "ok", counts, config)
+                return result
+            except BaseException as e:
+                err_payload = _error_payload(e)
+                err_ev = new_event(EventType.ERROR, run_id, type(e).__name__, err_payload)
+                append_event(run_id, err_ev, config)
+                counts["errors"] = counts.get("errors", 0) + 1
 
-    return inner  # type: ignore[return-value]
+                payload_end = _run_end_payload("error", counts, started_at)
+                ev_end = new_event(EventType.RUN_END, run_id, "run_end", payload_end)
+                append_event(run_id, ev_end, config)
+                finalize_run(run_id, "error", counts, config)
+                raise
+            finally:
+                _run_id_var.reset(token_run)
+                _counts_var.reset(token_counts)
+                _config_var.reset(token_config)
+                _event_window_var.reset(token_window)
+                _loop_emitted_var.reset(token_emitted)
+
+        return inner  # type: ignore[return-value]
+
+    if f is not None and not callable(f):
+        # @trace("name") -> f is the name string
+        return lambda func: decorator(func, explicit=str(f))  # type: ignore[return-value]
+    if f is None:
+        return decorator  # type: ignore[return-value]
+    return decorator(f)  # type: ignore[return-value]
 
 
 @contextmanager
@@ -346,7 +402,7 @@ def traced_run(name: str | None = None) -> Generator[None, None, None]:
     """
     Context manager that starts a new run (RUN_START / RUN_END, ERROR on exception)
     when no run is active; otherwise runs the block in the existing run without
-    creating a new run.
+    creating a new run. Run name precedence: AGENTDBG_RUN_NAME env, then name, then default.
     """
     existing_run_id = _run_id_var.get()
     if existing_run_id is not None:
@@ -354,7 +410,7 @@ def traced_run(name: str | None = None) -> Generator[None, None, None]:
         return
 
     config = load_config()
-    run_name = name
+    run_name = _resolve_run_name(name, None)
     meta = create_run(run_name, config)
     run_id = meta["run_id"]
     started_at = meta["started_at"]
@@ -367,7 +423,7 @@ def traced_run(name: str | None = None) -> Generator[None, None, None]:
     token_emitted = _loop_emitted_var.set(set())
     try:
         payload = _run_start_payload(run_name)
-        ev = new_event(EventType.RUN_START, run_id, run_name or "run", payload)
+        ev = new_event(EventType.RUN_START, run_id, run_name, payload)
         append_event(run_id, ev, config)
 
         yield
