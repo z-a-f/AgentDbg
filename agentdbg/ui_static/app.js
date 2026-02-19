@@ -221,8 +221,12 @@ function durationLabel(ms) {
 
 function buildEventEl(ev) {
   const isLoop = ev.event_type === 'LOOP_WARNING';
+  const isError = ev.event_type === 'ERROR';
+  let className = 'event';
+  if (isLoop) className += ' loop-warning';
+  if (isError) className += ' error';
   const div = document.createElement('div');
-  div.className = 'event' + (isLoop ? ' loop-warning' : '');
+  div.className = className;
   div.dataset.eventType = ev.event_type || '';
   const summary = document.createElement('div');
   summary.className = 'event-summary';
