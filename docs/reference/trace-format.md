@@ -14,6 +14,8 @@ This page describes the **public trace format** for AgentDbg v0.1. Traces are st
 - **Ordering:** Events in `events.jsonl` are in write order; when timestamps tie, this order is authoritative.
 - **Flushing:** Events are flushed after every write so that crashes do not lose the last event.
 
+**Redaction and truncation:** All payloads (and meta) written to disk pass through redaction and truncation before being written. This includes **ERROR** payloads and **RUN_START.argv** (option values matching redact keys are redacted). See the configuration reference for `redact`, `redact_keys`, and `max_field_bytes`.
+
 ---
 
 ## Event envelope (all events)
@@ -67,6 +69,9 @@ Every event is a single JSON object with these **required top-level fields**:
   "argv": ["script.py", "arg1"]
 }
 ```
+
+- **run_name** is set from: `AGENTDBG_RUN_NAME` (env), explicit `@trace("...")` / `@trace(name="...")` or `traced_run(name="...")`, or default `path:function - YYYY-MM-DD HH:MM`. See [configuration reference](config.md#run-name-env-only).
+- **argv** may contain secrets; values for options matching redact keys are redacted before write.
 
 ### RUN_END
 
@@ -133,13 +138,18 @@ Every event is a single JSON object with these **required top-level fields**:
 
 ### ERROR
 
+Error payloads use a consistent shape (same for standalone ERROR events and nested `error` in LLM_CALL/TOOL_CALL):
+
 ```json
 {
   "error_type": "ExceptionClassName",
   "message": "string",
-  "stack": "string"
+  "stack": "string | null",
+  "details": "optional, any"
 }
 ```
+
+- Use **`error_type`** (not `type`) for the exception class name.
 
 ### LOOP_WARNING
 

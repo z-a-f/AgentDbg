@@ -65,9 +65,9 @@ Default bind: `127.0.0.1:8712`. The UI fetches runs and events from these endpoi
 
 ## UI overview
 
-- Single static HTML/JS file; no build step.
+- **Multi-file static UI** (HTML, JS, CSS); no build step. Served from `agentdbg/ui_static/`.
 - Loads run list from `/api/runs`; when a run is selected (or `run_id` in query), loads `/api/runs/{run_id}/events`.
-- Timeline: events in order; each event expandable with payload shown as formatted JSON.
+- **Flat timeline:** events are shown in chronological order (write order / `ts`). Each event is expandable with payload shown as formatted JSON. Nesting by `parent_id` is not required.
 - `LOOP_WARNING` events are displayed prominently.
 
 ---
