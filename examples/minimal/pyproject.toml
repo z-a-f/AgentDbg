@@ -1,0 +1,7 @@
+[project]
+name = "minimal-examples"
+version = "0.0"
+dependencies = []
+
+[tool.setuptools]
+packages = []

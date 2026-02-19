@@ -1,6 +1,6 @@
 """
 Minimal runnable example: traced function with one record_tool_call and one record_llm_call.
-Run with: python -m examples.minimal_agent.main (from repo root) or set AGENTDBG_DATA_DIR.
+Run with: python examples/minimal/simple_agent.py (from repo root).
 """
 from agentdbg import record_llm_call, record_tool_call, trace
 

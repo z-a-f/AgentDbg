@@ -72,9 +72,9 @@ New integrations should be documented in [docs/integrations.md](docs/integration
 
 Examples live under `examples/` and must stay runnable from the repo root:
 
-- **`examples/minimal_agent/`** – minimal pure-Python agent (no extra deps).
-- **`examples/langchain/minimal/`** – minimal LangChain chain; requires `[langchain]` extra.
-- **`examples/langchain/customer_support/`** – advanced LangChain/LangGraph demo; requires `[langchain-examples]` and API keys (see its README).
+- **`examples/minimal/`** – minimal pure-Python agent (no extra deps); run `python examples/minimal/simple_agent.py`.
+- **`examples/langchain/minimal.py`** – minimal LangChain chain; requires `[langchain]` extra.
+- **`examples/langchain/`** – advanced LangChain/LangGraph customer-support demo (`customer_support.py` + `_customer_support/`); requires `[langchain-examples]` and API keys (see `_customer_support/README.md`).
 - **`examples/demo/`** – short demo scripts (`pure_python.py`, `langchain.py`).
 
 When changing directory layout or run commands, update README, [docs/index.md](docs/index.md) (Demos section), and this list.

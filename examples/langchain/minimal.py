@@ -1,7 +1,7 @@
 """
 Minimal LangChain example: @trace plus a chain that triggers one LLM and one tool callback.
 Uses fake LLM (no network). Run from repo root:
-  uv run --extra langchain python -m examples.langchain.minimal.main
+  uv run --extra langchain python examples/langchain/minimal.py
 Then: agentdbg view
 """
 from agentdbg import trace

@@ -43,10 +43,10 @@ The handler captures:
 - **LLM calls** (`on_llm_start` / `on_chat_model_start` -> `on_llm_end`): records model name, prompt, response, and token usage via `record_llm_call`.
 - **Tool calls** (`on_tool_start` -> `on_tool_end` / `on_tool_error`): records tool name, args, result, and error status via `record_tool_call`.
 
-See `examples/langchain_minimal/main.py` for a runnable example:
+See `examples/langchain/minimal.py` for a runnable example:
 
 ```bash
-uv run --extra langchain python -m examples.langchain_minimal.main
+uv run --extra langchain python examples/langchain/minimal.py
 agentdbg view
 ```
 

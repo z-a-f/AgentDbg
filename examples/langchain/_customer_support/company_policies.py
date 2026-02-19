@@ -21,21 +21,6 @@ def get_company_policies():
     docs = [{"page_content": txt} for txt in re.split(r"(?=\n##)", faq_text)]
     return docs
 
-def get_retriever(docs):
-    logger.info("Getting retriever...")
-    return VectorStoreRetriever.from_docs(docs, openai.Client())
-
-
-# Set by init_policies() before building the graph so lookup_policy uses it.
-_retriever: VectorStoreRetriever | None = None
-
-
-def init_policies() -> None:
-    """Build retriever from company policies. Call once before building the agent."""
-    global _retriever
-    docs = get_company_policies()
-    _retriever = get_retriever(docs)
-
 
 class VectorStoreRetriever:
     def __init__(self, docs: list, vectors: list, oai_client):
@@ -62,6 +47,20 @@ class VectorStoreRetriever:
         return [
             {**self._docs[idx], "similarity": scores[idx]} for idx in top_k_idx_sorted
         ]
+
+# Set by init_policies() before building the graph so lookup_policy uses it.
+_retriever: VectorStoreRetriever | None = None
+
+def get_retriever(docs):
+    logger.info("Getting retriever...")
+    return VectorStoreRetriever.from_docs(docs, openai.Client())
+
+
+def init_policies() -> None:
+    """Build retriever from company policies. Call once before building the agent."""
+    global _retriever
+    docs = get_company_policies()
+    _retriever = get_retriever(docs)
 
 
 @tool

@@ -1,0 +1,17 @@
+[project]
+name = "langchain-examples"
+version = "0.0"
+dependencies = [
+    "langchain>=1.2.10",
+    "langchain-anthropic==1.3.3",
+    "langchain-community==0.4.1",
+    "openai==2.21.0",
+    "tavily-python==0.7.21",
+    "pandas",
+    "pytz",
+]
+
+[tool.setuptools]
+packages = [
+    "_customer_support",
+]

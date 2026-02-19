@@ -52,7 +52,7 @@ pip install -e .
 ### Step 2: Run the example agent
 
 ```bash
-python examples/minimal_agent/main.py
+python examples/minimal/simple_agent.py
 ```
 
 This simulates a tiny agent that makes one tool call and one LLM call. Trace data lands in `~/.agentdbg/runs/`.
@@ -200,7 +200,7 @@ def run_agent():
     ...
 ```
 
-See `examples/langchain/minimal/` for a runnable example.
+See `examples/langchain/minimal.py` for a runnable example.
 
 ### Planned adapters
 

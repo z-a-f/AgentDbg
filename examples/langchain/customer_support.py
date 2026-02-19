@@ -1,19 +1,21 @@
+# From https://github.com/langchain-ai/langgraph/blob/23961cff61a42b52525f3b20b4094d8d2fba1744/docs/docs/tutorials/customer-support/customer-support.ipynb
 import logging
 import os
+from typing import Any
 
 logging.basicConfig(
     level=os.environ.get("LOGLEVEL", "ERROR").upper()
 )
 
 def get_api_keys():
-    from .prereq import _set_env
+    from _customer_support.prereq import _set_env
     _set_env("ANTHROPIC_API_KEY")
     _set_env("OPENAI_API_KEY")
     _set_env("TAVILY_API_KEY")
 
 
 def get_db(local_file: str | None = None):
-    from .database import download_db, update_dates
+    from _customer_support.database import download_db, update_dates
     local_file = download_db(local_file)
     return update_dates(local_file)
 
@@ -62,7 +64,7 @@ from agentdbg import trace
 
 @trace(name="langchain customer support example")
 def run_graph(graph, questions: list[str], config: dict):
-    from .utilities import _print_event
+    from _customer_support.utilities import _print_event
     log = logging.getLogger(__name__)
     log.info("Running graph with %d question(s)", len(questions))
     _printed = set()
@@ -82,14 +84,14 @@ def main():
     log.info("DB ready: %s", db)
 
     # Inject db path so all tool modules use the same DB
-    from . import flights, hotels, car_rentals, excursions
+    from _customer_support import flights, hotels, car_rentals, excursions
     flights.db = db
     hotels.db = db
     car_rentals.db = db
     excursions.db = db
 
-    from .agent import make_chat_model
-    from .graph import make_graph
+    from _customer_support.agent import make_chat_model
+    from _customer_support.graph import make_graph
     make_chat_model(db)
     graph = make_graph()
 
