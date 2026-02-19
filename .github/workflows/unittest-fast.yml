@@ -13,6 +13,9 @@ on:
       - agentdbg/**
       - tests/**
 
+env:
+  UV_VERSION: "0.10.2"
+
 jobs:
   unittest-fast:
     runs-on: ubuntu-latest
@@ -24,10 +27,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v7
         with:
-          version: "latest"
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v6
-        with:
+          version: ${{ env.UV_VERSION }}
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
         run: uv sync --all-extras --dev

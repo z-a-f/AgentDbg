@@ -1,0 +1,94 @@
+name: Run app + smoke
+on:
+  push:
+    branches: [main]
+    paths:
+      - agentdbg/**
+      - scripts/**
+
+env:
+  PYTHON_VERSION: "3.10"
+  UV_VERSION: "0.10.2"
+  APP_HOST: "127.0.0.1"
+  APP_PORT: "8712"
+
+jobs:
+  smoke-path-traversal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Start app (background)
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run agentdbg view \
+            --host "${APP_HOST}" \
+            --port "${APP_PORT}" \
+            --no-browser \
+            > server.log 2>&1 &
+
+          echo $! > server.pid
+          echo "Server PID: $(cat server.pid)"
+
+      - name: Wait for app to be ready
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # If you have a /health endpoint, use that instead of /
+          URL="http://${APP_HOST}:${APP_PORT}/"
+
+          for i in {1..60}; do
+            if curl -fsS "$URL" >/dev/null; then
+              echo "App is up!"
+              exit 0
+            fi
+            sleep 1
+          done
+
+          echo "App did not become ready in time"
+          echo "---- server.log ----"
+          tail -n 200 server.log || true
+          exit 1
+
+      - name: Run smoke test(s)
+        run: |
+          scripts/smoke_path_traversal.sh "http://${APP_HOST}:${APP_PORT}"
+
+      - name: Stop app (always)
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          if [[ -f server.pid ]]; then
+            PID="$(cat server.pid)"
+            echo "Stopping server PID $PID"
+            kill "$PID" 2>/dev/null || true
+
+            # Give it a moment, then hard kill if needed
+            for i in {1..10}; do
+              kill -0 "$PID" 2>/dev/null || exit 0
+              sleep 1
+            done
+            echo "Force killing $PID"
+            kill -9 "$PID" 2>/dev/null || true
+          fi
+
+      - name: Upload server log (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: server-log
+          path: server.log
