@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/z-a-f/AgentDbg/schemas/run.schema.json",
+  "$id": "https://github.com/AgentDbg/AgentDbg/schemas/run.schema.json",
   "title": "AgentDbg run.json",
   "description": "Run metadata file (run.json) for AgentDbg v0.1. Best-effort schema for tooling; canonical reference is docs/reference/trace-format.md.",
   "type": "object",

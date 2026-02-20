@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/z-a-f/AgentDbg/schemas/event.schema.json",
+  "$id": "https://github.com/AgentDbg/AgentDbg/schemas/event.schema.json",
   "title": "AgentDbg event (envelope)",
   "description": "Event envelope for AgentDbg v0.1. One event per line in events.jsonl. Best-effort schema for tooling; canonical reference is docs/reference/trace-format.md.",
   "type": "object",

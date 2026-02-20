@@ -13,7 +13,7 @@
 **1. Install:**
 
 ```bash
-git clone https://github.com/z-a-f/AgentDbg.git
+git clone https://github.com/AgentDbg/AgentDbg.git
 cd AgentDbg
 uv venv && uv sync && uv pip install -e .
 ```

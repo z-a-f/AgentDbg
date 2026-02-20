@@ -7,7 +7,7 @@ Requires Python 3.10+.
 **With uv (recommended):**
 
 ```bash
-git clone https://github.com/z-a-f/AgentDbg.git
+git clone https://github.com/AgentDbg/AgentDbg.git
 cd AgentDbg
 uv venv && uv sync && uv pip install -e .
 ```
@@ -15,7 +15,7 @@ uv venv && uv sync && uv pip install -e .
 **With pip:**
 
 ```bash
-git clone https://github.com/z-a-f/AgentDbg.git
+git clone https://github.com/AgentDbg/AgentDbg.git
 cd AgentDbg
 python -m venv .venv && source .venv/bin/activate
 pip install -e .

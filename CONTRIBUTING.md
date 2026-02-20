@@ -9,7 +9,7 @@ Thanks for your interest in AgentDbg. This document covers dev setup, tests, lin
 1. **Clone and install with uv (recommended):**
 
    ```bash
-   git clone https://github.com/z-a-f/AgentDbg.git
+   git clone https://github.com/AgentDbg/AgentDbg.git
    cd AgentDbg
    uv venv && uv sync && uv pip install -e .
    ```
