@@ -152,6 +152,61 @@ def test_success_calls_have_status_ok_and_no_error(temp_data_dir):
     assert llm_payload.get("error") is None
 
 
+def test_record_llm_call_accepts_float_token_counts(temp_data_dir, monkeypatch):
+    """record_llm_call with usage containing float token counts normalizes to integers (e.g. 100.0 -> 100)."""
+    monkeypatch.setenv("AGENTDBG_REDACT", "0")  # so usage.*_tokens keys are not redacted
+    @trace
+    def _run():
+        record_llm_call(
+            model="gpt-4",
+            prompt="p",
+            response="r",
+            usage={
+                "prompt_tokens": 10.0,
+                "completion_tokens": 20.0,
+                "total_tokens": 30.0,
+            },
+        )
+
+    _run()
+    config = load_config()
+    run_id = get_latest_run_id(config)
+    events = load_events(run_id, config)
+    llm_events = [e for e in events if e.get("event_type") == EventType.LLM_CALL.value]
+    assert len(llm_events) >= 1
+    usage = llm_events[0].get("payload", {}).get("usage")
+    assert usage is not None
+    assert usage["prompt_tokens"] == 10
+    assert usage["completion_tokens"] == 20
+    assert usage["total_tokens"] == 30
+    assert all(isinstance(v, int) for v in usage.values())
+
+
+def test_normalize_usage_accepts_floats_and_mixed_types():
+    """_normalize_usage accepts float token counts and casts to int; mixed int/float and None allowed."""
+    from agentdbg.tracing import _normalize_usage
+
+    # All floats (common from some LLM APIs)
+    out = _normalize_usage({"prompt_tokens": 100.0, "completion_tokens": 50.0, "total_tokens": 150.0})
+    assert out == {"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150}
+
+    # Mixed int and float
+    out = _normalize_usage({"prompt_tokens": 10, "completion_tokens": 20.0, "total_tokens": 30})
+    assert out == {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}
+
+    # Missing keys -> None; float truncated to int
+    out = _normalize_usage({"prompt_tokens": 5.7, "completion_tokens": None, "total_tokens": 10})
+    assert out["prompt_tokens"] == 5
+    assert out["completion_tokens"] is None
+    assert out["total_tokens"] == 10
+
+    # Invalid types (e.g. string) -> None for that key
+    out = _normalize_usage({"prompt_tokens": "100", "completion_tokens": 20.0, "total_tokens": 30})
+    assert out["prompt_tokens"] is None
+    assert out["completion_tokens"] == 20
+    assert out["total_tokens"] == 30
+
+
 def test_traced_run_success_one_run_start_one_run_end(temp_data_dir):
     """traced_run(name=...) writes exactly one RUN_START and one RUN_END; run.json status == 'ok'."""
     with traced_run(name="my_agent_run"):

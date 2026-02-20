@@ -167,7 +167,16 @@ def _normalize_usage(usage: Any) -> dict[str, int | None] | None:
 
     def _token_val(key: str) -> int | None:
         v = usage.get(key)
-        return v if isinstance(v, (int, type(None))) else None
+        if v is None:
+            return None
+        if isinstance(v, int):
+            return v
+        if isinstance(v, float):
+            try:
+                return int(v)
+            except (OverflowError, ValueError):
+                return None
+        return None
 
     return {
         "prompt_tokens": _token_val("prompt_tokens"),
