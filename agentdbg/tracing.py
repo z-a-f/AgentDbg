@@ -20,7 +20,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime
 from functools import wraps
-from typing import Any, Callable, Generator, TypeVar
+from typing import Any, Callable, Generator, ParamSpec, TypeVar
 
 from agentdbg.config import AgentDbgConfig, load_config
 from agentdbg.constants import DEPTH_LIMIT, REDACTED_MARKER, TRUNCATED_MARKER, default_counts
@@ -348,14 +348,15 @@ def _error_payload(exc: BaseException) -> dict[str, Any]:
     }
 
 
-F = TypeVar("F", bound=Callable[..., Any])
+P = ParamSpec("P")
+R = TypeVar("R")
 
 
 def trace(
-    f: F | str | None = None,
+    f: Callable[P, R] | str | None = None,
     *,
     name: str | None = None,
-) -> F | Callable[[F], F]:
+) -> Callable[P, R] | Callable[[Callable[P, R]], Callable[P, R]]:
     """
     Decorator that starts a new run (RUN_START / RUN_END, ERROR on exception)
     when no run is active; otherwise runs the function in the existing run without
@@ -365,11 +366,11 @@ def trace(
     Run name precedence: AGENTDBG_RUN_NAME env, then explicit name, then default (entrypoint - timestamp).
     """
 
-    def decorator(func: F, explicit: str | None = None) -> F:
+    def decorator(func: Callable[P, R], explicit: str | None = None) -> Callable[P, R]:
         _name = explicit if explicit is not None else name
 
         @wraps(func)
-        def inner(*args: Any, **kwargs: Any) -> Any:
+        def inner(*args: P.args, **kwargs: P.kwargs) -> R:
             existing_run_id = _run_id_var.get()
             if existing_run_id is not None:
                 return func(*args, **kwargs)
@@ -416,7 +417,7 @@ def trace(
                 _event_window_var.reset(token_window)
                 _loop_emitted_var.reset(token_emitted)
 
-        return inner  # type: ignore[return-value]
+        return inner
 
     if f is not None and not callable(f):
         # @trace("name") -> f is the name string
