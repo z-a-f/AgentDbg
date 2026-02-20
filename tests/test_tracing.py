@@ -190,6 +190,38 @@ def test_traced_run_error_one_error_run_json_error(temp_data_dir):
     assert run_meta.get("counts", {}).get("errors") == 1
 
 
+def test_trace_system_exit_propagates_without_error_recorded(temp_data_dir):
+    """SystemExit inside @trace propagates immediately; no ERROR event or RUN_END is written."""
+    @trace(name="sys_exit_run")
+    def _traced_sys_exit():
+        raise SystemExit(42)
+
+    with pytest.raises(SystemExit) as exc_info:
+        _traced_sys_exit()
+    assert exc_info.value.code == 42
+
+    config = load_config()
+    run_id = get_latest_run_id(config)
+    events = load_events(run_id, config)
+    errors = [e for e in events if e.get("event_type") == EventType.ERROR.value]
+    run_ends = [e for e in events if e.get("event_type") == EventType.RUN_END.value]
+    assert len(errors) == 0, "SystemExit must not be recorded as ERROR"
+    assert len(run_ends) == 0, "RUN_END must not be written on SystemExit (fast exit)"
+
+
+def test_traced_run_keyboard_interrupt_propagates_without_error_recorded(temp_data_dir):
+    """KeyboardInterrupt inside traced_run propagates immediately; no ERROR event is written."""
+    with pytest.raises(KeyboardInterrupt):
+        with traced_run(name="kbd_run"):
+            raise KeyboardInterrupt()
+
+    config = load_config()
+    run_id = get_latest_run_id(config)
+    events = load_events(run_id, config)
+    errors = [e for e in events if e.get("event_type") == EventType.ERROR.value]
+    assert len(errors) == 0, "KeyboardInterrupt must not be recorded as ERROR"
+
+
 def test_traced_run_nested_does_not_create_new_run(temp_data_dir):
     """Nested traced_run uses the outer run; only one RUN_START and one RUN_END."""
     with traced_run(name="outer"):
