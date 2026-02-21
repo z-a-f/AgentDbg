@@ -12,7 +12,8 @@ from pathlib import Path
 from agentdbg.constants import REDACTED_MARKER, TRUNCATED_MARKER
 from agentdbg.config import load_config, AgentDbgConfig
 from agentdbg.events import EventType
-from agentdbg.tracing import record_tool_call, _redact_and_truncate, trace, traced_run
+from agentdbg._tracing._redact import _redact_and_truncate
+from agentdbg.tracing import record_tool_call, trace, traced_run
 from agentdbg.storage import load_events, list_runs
 
 

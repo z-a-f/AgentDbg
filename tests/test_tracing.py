@@ -184,7 +184,7 @@ def test_record_llm_call_accepts_float_token_counts(temp_data_dir, monkeypatch):
 
 def test_normalize_usage_accepts_floats_and_mixed_types():
     """_normalize_usage accepts float token counts and casts to int; mixed int/float and None allowed."""
-    from agentdbg.tracing import _normalize_usage
+    from agentdbg._tracing._redact import _normalize_usage
 
     # All floats (common from some LLM APIs)
     out = _normalize_usage({"prompt_tokens": 100.0, "completion_tokens": 50.0, "total_tokens": 150.0})

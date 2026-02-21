@@ -114,7 +114,7 @@ def test_yaml_redact_off_disables_redaction(tmp_path, monkeypatch):
     monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_home))
 
     from agentdbg.config import load_config
-    from agentdbg.tracing import _redact_and_truncate
+    from agentdbg._tracing._redact import _redact_and_truncate
 
     cfg = load_config(project_root=tmp_path)
     assert cfg.redact is False
