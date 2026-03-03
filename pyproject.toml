@@ -46,10 +46,6 @@ dev = [
 [project.optional-dependencies]
 langchain = ["langchain>=1.2.10"]
 crewai = ["crewai[tools]>=1.9.3"]
-examples = [
-    "langchain-examples @ {root:uri}/examples/langchain",
-    "minimal-examples @ {root:uri}/examples/minimal",
-]
 
 [build-system]
 # Wheel/sdist include agentdbg/ (and thus agentdbg/ui_static/) by default.
@@ -68,19 +64,4 @@ markers = [
   "slow: slower tests (excluded from fast CI)",
   "long: long-running tests (excluded from fast CI)",
   "longrunning: very long-running tests (excluded from fast CI)",
-]
-
-[tool.hatch.metadata]
-allow-direct-references = true
-
-[tool.uv]
-conflicts = [
-    [  # Examples should be installed separately from the core
-        { extra = "examples" },
-        { extra = "crewai" },
-    ],
-    [  # Examples should be installed separately from the core
-        { extra = "examples" },
-        { extra = "langchain" },
-    ],
 ]

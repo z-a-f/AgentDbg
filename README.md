@@ -1,6 +1,6 @@
 # AgentDbg
 
-![Dashboard Brag](docs/assets/dashboard.png)
+![Dashboard Brag](https://github.com/AgentDbg/AgentDbg/blob/v0.1.0/docs/assets/dashboard.png?raw=True)
 
 **The step-through debugger for AI agents.**
 
@@ -117,7 +117,7 @@ agentdbg view
 
 A browser tab opens at `http://127.0.0.1:8712` showing the full run timeline - every event, with inputs, outputs, and timing.
 
-![Pure Pythonic Agent Timeline UI](docs/assets/timeline-pure-python.gif)
+![Pure Pythonic Agent Timeline UI](https://github.com/AgentDbg/AgentDbg/blob/v0.1.0/docs/assets/dashboard.png?raw=True)
 
 That's it. You're debugging.
 

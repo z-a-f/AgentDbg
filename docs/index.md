@@ -40,7 +40,7 @@ A browser tab opens showing every event in the run - tool calls, LLM calls, timi
 |--------|------|------------|
 | **Minimal agent** (pure Python) | `examples/minimal/` | `python examples/minimal/simple_agent.py` |
 | **LangChain minimal** | `examples/langchain/minimal.py` | `uv run --extra langchain python examples/langchain/minimal.py` |
-| **LangChain customer support** (advanced) | `examples/langchain/` | Set API keys, then `cd examples/langchain && uv run --extra langchain-examples python customer_support.py` |
+| **LangChain customer support** (advanced) | `examples/langchain/` | Set API keys, then follow `_customer_support/README.md` |
 | **Demos** (short scripts) | `examples/demo/` | `python examples/demo/pure_python.py` or `python examples/demo/langchain.py` |
 
 After any run, open the timeline with `agentdbg view`.
