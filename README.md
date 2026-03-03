@@ -1,6 +1,6 @@
 # AgentDbg
 
-![Dashboard Brag](https://github.com/AgentDbg/AgentDbg/blob/v0.1.0/docs/assets/dashboard.png?raw=True)
+![Dashboard Brag](https://github.com/AgentDbg/AgentDbg/blob/main/docs/assets/dashboard.png?raw=True)
 
 **The step-through debugger for AI agents.**
 
@@ -16,68 +16,9 @@ In under 10 minutes, you can inspect a full execution timeline with inputs, outp
 
 **No cloud. No accounts. No telemetry.**
 
-## Why AgentDbg?
-
-Agents fail in ways logs don't explain:
-
-- Silent loops that burn tokens
-- Tool schema mismatches and malformed arguments
-- Prompt regressions ("it worked yesterday")
-- Flaky, non-deterministic runs
-- "Why did it do that?"
-
-AgentDbg makes agent executions **legible**.
-
-Instead of scattered logs, you get:
-
-- A chronological timeline of events
-- Expandable LLM calls (prompt, response, usage)
-- Tool calls with args, results, and error status
-- Highlighted loop warnings with evidence
-- A self-contained run artifact you can export
-
-
-## What you get (per run)
-
-Each run produces a local artifact:
-
-- `run.json` - metadata, status, counts
-- `events.jsonl` - full structured event stream
-
-In the UI, you see:
-
-- Run status (ok / error)
-- Duration
-- LLM call count
-- Tool call count
-- Error count
-- Loop warnings (if any)
-
-Everything is written to `~/.agentdbg/` as plain JSON files.
-Nothing leaves your machine.
-
-
-## What AgentDbg is
-
-- A **development-time debugger** for AI agents
-- **Local-first**: traces stored as JSONL on disk
-- **Framework-agnostic**: works with any Python code
-- **Redacted by default**: secrets scrubbed before writing to disk
-- Built for the "why did it do that?" moment
-
-## What AgentDbg is NOT (v0.1 scope)
-
-- Not a hosted service
-- Not a production observability platform
-- Not dashboards or alerting
-- Not deterministic replay (planned v0.2+)
-- Not tied to a single framework
-
-If observability tells you how your system behaves in production, AgentDbg helps you understand why your agent behaved that way while you're building it.
-
 ## Get running in 5 minutes
 
-Three commands. No config files, no API keys, no sign-up:
+Three commands. No config files, no API keys, no sign-up. Install: `pip install agentdbg`. Then:
 
 1. [Install (one-time)](#step-1-install)
 2. [Run example](#step-2-run-the-example-agent)
@@ -86,20 +27,8 @@ Three commands. No config files, no API keys, no sign-up:
 ### Step 1: Install
 
 ```bash
-git clone https://github.com/AgentDbg/AgentDbg.git
-cd AgentDbg
-uv venv && uv sync && uv pip install -e .
+pip install agentdbg
 ```
-
-<details>
-<summary>No uv? Use pip instead.</summary>
-
-```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -e .
-```
-
-</details>
 
 ### Step 2: Run the example agent
 
@@ -117,7 +46,7 @@ agentdbg view
 
 A browser tab opens at `http://127.0.0.1:8712` showing the full run timeline - every event, with inputs, outputs, and timing.
 
-![Pure Pythonic Agent Timeline UI](https://github.com/AgentDbg/AgentDbg/blob/v0.1.0/docs/assets/dashboard.png?raw=True)
+![Pure Pythonic Agent Timeline UI](https://github.com/AgentDbg/AgentDbg/blob/main/docs/assets/timeline-pure-python.gif?raw=True)
 
 That's it. You're debugging.
 
@@ -161,6 +90,40 @@ Then `agentdbg view` to see the timeline.
 | State updates | `record_state()` | Arbitrary state snapshots |
 | Errors | `@trace` (automatic) | Exception type, message, stack trace |
 | Loop warnings | Automatic detection | Repetitive pattern + evidence |
+
+
+## What you see
+
+In the UI, you see:
+
+- Run status (ok / error)
+- Duration
+- LLM call count
+- Tool call count
+- Error count
+- Loop warnings (if any)
+- A chronological timeline of events
+- Expandable LLM calls (prompt, response, usage)
+- Tool calls with args, results, and error status
+- Highlighted loop warnings with evidence
+
+Each run produces `run.json` (metadata, status, counts) and `events.jsonl` (full structured event stream) under `~/.agentdbg/`. Nothing leaves your machine.
+
+
+## What AgentDbg is
+
+- **Local-first**: traces stored as JSONL on disk
+- **Framework-agnostic**: works with any Python code
+- **Redacted by default**: secrets scrubbed before writing to disk
+- A development-time debugger for the "why did it do that?" moment
+
+## What AgentDbg is NOT (v0.1 scope)
+
+- Not a hosted service
+- Not a production observability platform
+- Not dashboards or alerting
+- Not deterministic replay (planned v0.2+)
+- Not tied to a single framework
 
 
 ## CLI reference
@@ -248,37 +211,28 @@ def run_agent():
 
 See `examples/langchain/minimal.py` for a runnable example.
 
-### Planned adapters
-
-- OpenAI Agents SDK
-- Agno
-- Others (AutoGen, CrewAI, custom loops)
-
-Until an adapter exists for your framework, use the core SDK: `@trace` + `record_llm_call` / `record_tool_call`.
+More framework adapters coming soon.
 
 
 ## Development
 
 ```bash
-uv venv && uv sync && uv pip install -e ".[langchain]"
-uv run pytest
+git clone https://github.com/AgentDbg/AgentDbg.git
+cd AgentDbg
+uv venv && uv sync && uv pip install -e .
 ```
 
+<details>
+<summary>No uv? Use pip instead.</summary>
 
-## Roadmap
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -e .
+```
 
-**Works today (v0.1):**
-- `@trace` decorator + `record_llm_call` / `record_tool_call` / `record_state`
-- Local JSONL storage with automatic redaction
-- `agentdbg list`, `agentdbg view` (timeline UI), `agentdbg export`
-- Loop detection (`LOOP_WARNING` events)
-- LangChain/LangGraph callback handler
+</details>
 
-**Planned (v0.2+):**
-- Deterministic replay / tool mocking
-- OpenAI Agents SDK adapter
-- Eval + regression CI
-- Optional hosted trace store
+For LangChain support: `pip install -e ".[langchain]"`. Run tests: `uv run pytest` (or `pytest`).
 
 
 ## License
