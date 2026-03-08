@@ -1,6 +1,6 @@
 """
 Context vars, implicit-run state, _ensure_run, and atexit finalization.
-Depends: agentdbg.config, agentdbg.constants, agentdbg.events, agentdbg.storage, _redact.
+Depends: agentdbg.config, agentdbg.constants, agentdbg.events, agentdbg.guardrails, agentdbg.storage, _redact.
 """
 
 import atexit
@@ -13,6 +13,7 @@ from typing import Any, Callable
 from agentdbg.config import AgentDbgConfig, load_config
 from agentdbg.constants import default_counts
 from agentdbg.events import EventType, new_event, utc_now_iso_ms_z
+from agentdbg.guardrails import GuardrailParams, check_after_event
 from agentdbg.storage import append_event, create_run, finalize_run
 
 from agentdbg._tracing._redact import _redact_and_truncate, _redact_argv
@@ -29,6 +30,13 @@ _event_window_var: ContextVar[list[dict] | None] = ContextVar(
 _loop_emitted_var: ContextVar[set[str] | None] = ContextVar(
     "agentdbg_loop_emitted", default=None
 )
+_guardrail_params_var: ContextVar[GuardrailParams | None] = ContextVar(
+    "agentdbg_guardrail_params", default=None
+)
+_started_at_var: ContextVar[str | None] = ContextVar(
+    "agentdbg_started_at", default=None
+)
+_event_count_var: ContextVar[int] = ContextVar("agentdbg_event_count", default=0)
 
 # Implicit run: stored so atexit can finalize (RUN_END + run.json status).
 _implicit_run_id: str | None = None
@@ -95,6 +103,26 @@ def _run_start_payload_for_event(
     payload = _run_start_payload(run_name)
     payload["argv"] = _redact_argv(payload["argv"], config)
     return _redact_and_truncate(payload, config)
+
+
+def _append_event_and_check_guardrails(
+    run_id: str, event: dict, config: AgentDbgConfig, counts: dict
+) -> None:
+    """
+    Append event to storage, then if in an explicit run with guardrails, increment
+    event count and run guardrail checks. Raises AgentDbgGuardrailExceeded when a limit is exceeded.
+    """
+    append_event(run_id, event, config)
+    params = _guardrail_params_var.get()
+    if params is None:
+        return
+    count = _event_count_var.get()
+    count += 1
+    _event_count_var.set(count)
+    started_at = _started_at_var.get()
+    if started_at is None:
+        return
+    check_after_event(event, counts, count, started_at, params, now_iso=None)
 
 
 def _run_end_payload(status: str, counts: dict, started_at: str) -> dict[str, Any]:

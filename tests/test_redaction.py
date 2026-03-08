@@ -12,6 +12,7 @@ from pathlib import Path
 
 from agentdbg.constants import REDACTED_MARKER, TRUNCATED_MARKER
 from agentdbg.config import load_config, AgentDbgConfig
+from agentdbg.guardrails import GuardrailParams
 from agentdbg.events import EventType
 from agentdbg._tracing._redact import _redact_and_truncate
 from agentdbg.tracing import record_tool_call, trace, traced_run
@@ -34,6 +35,7 @@ def test_max_field_truncation():
         loop_window=12,
         loop_repetitions=3,
         data_dir=Path("."),
+        guardrails=GuardrailParams(),
     )
     short = "under limit"
     assert len(short.encode("utf-8")) <= max_bytes
@@ -188,6 +190,7 @@ def _redact_cfg(keys: list[str]) -> AgentDbgConfig:
         loop_window=12,
         loop_repetitions=3,
         data_dir=Path("."),
+        guardrails=GuardrailParams(),
     )
 
 

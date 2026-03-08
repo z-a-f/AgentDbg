@@ -1,6 +1,6 @@
 """
 Run lifecycle: _run_context context manager, trace decorator, traced_run.
-Depends: agentdbg.config, agentdbg.events, agentdbg.storage, _redact, _context.
+Depends: agentdbg.config, agentdbg.events, agentdbg.exceptions, agentdbg.guardrails, agentdbg.storage, _redact, _context.
 """
 
 import sys
@@ -13,17 +13,23 @@ from typing import Any, Callable, Generator, ParamSpec, TypeVar
 from agentdbg.config import load_config
 from agentdbg.constants import default_counts
 from agentdbg.events import EventType, new_event
+from agentdbg.exceptions import AgentDbgGuardrailExceeded
+from agentdbg.guardrails import GuardrailParams, merge_guardrail_params
 from agentdbg.storage import append_event, create_run, finalize_run
 
 from agentdbg._tracing._context import (
+    _append_event_and_check_guardrails,
     _config_var,
     _counts_var,
+    _event_count_var,
     _event_window_var,
+    _guardrail_params_var,
     _loop_emitted_var,
     _resolve_run_name,
     _run_end_payload,
     _run_id_var,
     _run_start_payload_for_event,
+    _started_at_var,
 )
 from agentdbg._tracing._redact import _redact_and_truncate
 from agentdbg._integration_utils import _invoke_run_enter, _invoke_run_exit
@@ -42,10 +48,23 @@ def _error_payload(exc: BaseException) -> dict[str, Any]:
     }
 
 
+def _guardrail_error_payload(exc: AgentDbgGuardrailExceeded) -> dict[str, Any]:
+    """Build ERROR payload for guardrail abort (includes guardrail, threshold, actual)."""
+    return {
+        "error_type": type(exc).__name__,
+        "message": exc.message,
+        "stack": traceback.format_exc(),
+        "guardrail": exc.guardrail,
+        "threshold": exc.threshold,
+        "actual": exc.actual,
+    }
+
+
 @contextmanager
 def _run_context(
     name: str | None = None,
     func: Callable[..., Any] | None = None,
+    guardrail_params: GuardrailParams | None = None,
 ) -> Generator[None, None, None]:
     """
     Context manager that factors the common run lifecycle.
@@ -60,6 +79,7 @@ def _run_context(
         return
 
     config = load_config()
+    params = guardrail_params if guardrail_params is not None else config.guardrails
     run_name = _resolve_run_name(name, func)
     meta = create_run(run_name, config)
     run_id = meta["run_id"]
@@ -71,6 +91,9 @@ def _run_context(
     token_config = _config_var.set(config)
     token_window = _event_window_var.set([])
     token_emitted = _loop_emitted_var.set(set())
+    token_guardrail = _guardrail_params_var.set(params)
+    token_started_at = _started_at_var.set(started_at)
+    token_event_count = _event_count_var.set(0)
     exc_info: tuple[
         type[BaseException] | None, BaseException | None, TracebackType | None
     ] = (
@@ -89,14 +112,22 @@ def _run_context(
     try:
         payload = _run_start_payload_for_event(run_name, config)
         ev = new_event(EventType.RUN_START, run_id, run_name, payload)
-        append_event(run_id, ev, config)
+        _append_event_and_check_guardrails(run_id, ev, config, counts)
         _invoke_run_enter()
         yield
+    except AgentDbgGuardrailExceeded as e:
+        exc_info = sys.exc_info()
+        err_payload = _redact_and_truncate(_guardrail_error_payload(e), config)
+        err_ev = new_event(EventType.ERROR, run_id, type(e).__name__, err_payload)
+        append_event(run_id, err_ev, config)
+        counts["errors"] = counts.get("errors", 0) + 1
+        _finish_run("error")
+        raise
     except Exception as e:
         exc_info = sys.exc_info()
         err_payload = _redact_and_truncate(_error_payload(e), config)
         err_ev = new_event(EventType.ERROR, run_id, type(e).__name__, err_payload)
-        append_event(run_id, err_ev, config)
+        _append_event_and_check_guardrails(run_id, err_ev, config, counts)
         counts["errors"] = counts.get("errors", 0) + 1
         _finish_run("error")
         raise
@@ -108,12 +139,21 @@ def _run_context(
         _config_var.reset(token_config)
         _event_window_var.reset(token_window)
         _loop_emitted_var.reset(token_emitted)
+        _guardrail_params_var.reset(token_guardrail)
+        _started_at_var.reset(token_started_at)
+        _event_count_var.reset(token_event_count)
 
 
 def trace(
     f: Callable[P, R] | str | None = None,
     *,
     name: str | None = None,
+    stop_on_loop: bool | None = None,
+    stop_on_loop_min_repetitions: int | None = None,
+    max_llm_calls: int | None = None,
+    max_tool_calls: int | None = None,
+    max_events: int | None = None,
+    max_duration_s: float | None = None,
 ) -> Callable[P, R] | Callable[[Callable[P, R]], Callable[P, R]]:
     """
     Decorator that starts a new run (RUN_START / RUN_END, ERROR on exception)
@@ -122,14 +162,31 @@ def trace(
 
     Usage: @trace, @trace(), @trace("run name"), @trace(name="run name").
     Run name precedence: AGENTDBG_RUN_NAME env, then explicit name, then default (entrypoint - timestamp).
+    Guardrail kwargs (stop_on_loop, max_llm_calls, etc.) override config; see SPEC §13.
     """
 
     def decorator(func: Callable[P, R], explicit: str | None = None) -> Callable[P, R]:
         _name = explicit if explicit is not None else name
+        config = load_config()
+        base = config.guardrails
+        kw: dict[str, Any] = {}
+        if stop_on_loop is not None:
+            kw["stop_on_loop"] = stop_on_loop
+        if stop_on_loop_min_repetitions is not None:
+            kw["stop_on_loop_min_repetitions"] = stop_on_loop_min_repetitions
+        if max_llm_calls is not None:
+            kw["max_llm_calls"] = max_llm_calls
+        if max_tool_calls is not None:
+            kw["max_tool_calls"] = max_tool_calls
+        if max_events is not None:
+            kw["max_events"] = max_events
+        if max_duration_s is not None:
+            kw["max_duration_s"] = max_duration_s
+        params = merge_guardrail_params(base, **kw)
 
         @wraps(func)
         def inner(*args: P.args, **kwargs: P.kwargs) -> R:
-            with _run_context(name=_name, func=func):
+            with _run_context(name=_name, func=func, guardrail_params=params):
                 return func(*args, **kwargs)
 
         return inner
@@ -143,11 +200,36 @@ def trace(
 
 
 @contextmanager
-def traced_run(name: str | None = None) -> Generator[None, None, None]:
+def traced_run(
+    name: str | None = None,
+    *,
+    stop_on_loop: bool | None = None,
+    stop_on_loop_min_repetitions: int | None = None,
+    max_llm_calls: int | None = None,
+    max_tool_calls: int | None = None,
+    max_events: int | None = None,
+    max_duration_s: float | None = None,
+) -> Generator[None, None, None]:
     """
-    Context manager that starts a new run (RUN_START / RUN_END, ERROR on exception)
+    Context manager that starts a new run (RUN_START / RUN_END / ERROR on exception)
     when no run is active; otherwise runs the block in the existing run without
     creating a new run. Run name precedence: AGENTDBG_RUN_NAME env, then name, then default.
+    Guardrail kwargs override config; see SPEC §13.
     """
-    with _run_context(name=name, func=None):
+    config = load_config()
+    kw: dict[str, Any] = {}
+    if stop_on_loop is not None:
+        kw["stop_on_loop"] = stop_on_loop
+    if stop_on_loop_min_repetitions is not None:
+        kw["stop_on_loop_min_repetitions"] = stop_on_loop_min_repetitions
+    if max_llm_calls is not None:
+        kw["max_llm_calls"] = max_llm_calls
+    if max_tool_calls is not None:
+        kw["max_tool_calls"] = max_tool_calls
+    if max_events is not None:
+        kw["max_events"] = max_events
+    if max_duration_s is not None:
+        kw["max_duration_s"] = max_duration_s
+    params = merge_guardrail_params(config.guardrails, **kw)
+    with _run_context(name=name, func=None, guardrail_params=params):
         yield

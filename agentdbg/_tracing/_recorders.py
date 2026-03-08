@@ -8,9 +8,8 @@ from typing import Any
 from agentdbg.config import AgentDbgConfig
 from agentdbg.events import EventType, new_event
 from agentdbg.loopdetect import detect_loop, pattern_key as loop_pattern_key
-from agentdbg.storage import append_event
 
-from agentdbg._tracing._context import _ensure_run
+from agentdbg._tracing._context import _append_event_and_check_guardrails, _ensure_run
 from agentdbg._tracing._redact import (
     _apply_redaction_truncation,
     _build_error_payload,
@@ -41,7 +40,7 @@ def _maybe_emit_loop_warning(
         pattern if len(pattern) <= max_name_len else pattern[: max_name_len - 1] + "..."
     )
     ev = new_event(EventType.LOOP_WARNING, run_id, name, payload)
-    append_event(run_id, ev, config)
+    _append_event_and_check_guardrails(run_id, ev, config, counts)
     counts["loop_warnings"] = counts.get("loop_warnings", 0) + 1
     emitted.add(key)
 
@@ -84,8 +83,8 @@ def record_llm_call(
     }
     payload, safe_meta = _apply_redaction_truncation(payload, meta or {}, config)
     ev = new_event(EventType.LLM_CALL, run_id, model, payload, meta=safe_meta)
-    append_event(run_id, ev, config)
     counts["llm_calls"] = counts.get("llm_calls", 0) + 1
+    _append_event_and_check_guardrails(run_id, ev, config, counts)
     window.append(ev)
     if len(window) > config.loop_window:
         window[:] = window[-config.loop_window :]
@@ -122,8 +121,8 @@ def record_tool_call(
     }
     payload, safe_meta = _apply_redaction_truncation(payload, meta or {}, config)
     ev = new_event(EventType.TOOL_CALL, run_id, name, payload, meta=safe_meta)
-    append_event(run_id, ev, config)
     counts["tool_calls"] = counts.get("tool_calls", 0) + 1
+    _append_event_and_check_guardrails(run_id, ev, config, counts)
     window.append(ev)
     if len(window) > config.loop_window:
         window[:] = window[-config.loop_window :]
@@ -146,7 +145,7 @@ def record_state(
     payload = {"state": state, "diff": diff}
     payload, safe_meta = _apply_redaction_truncation(payload, meta or {}, config)
     ev = new_event(EventType.STATE_UPDATE, run_id, "state", payload, meta=safe_meta)
-    append_event(run_id, ev, config)
+    _append_event_and_check_guardrails(run_id, ev, config, counts)
     window.append(ev)
     if len(window) > config.loop_window:
         window[:] = window[-config.loop_window :]

@@ -1,9 +1,11 @@
-"""Configuration for AgentDbg: redaction, loop detection, and data directory."""
+"""Configuration for AgentDbg: redaction, loop detection, guardrails, and data directory."""
 
 import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from agentdbg.guardrails import GuardrailParams
 
 try:
     import yaml
@@ -31,7 +33,7 @@ _MIN_LOOP_REPETITIONS = 2
 
 @dataclass
 class AgentDbgConfig:
-    """Runtime configuration for tracing, redaction, and loop detection."""
+    """Runtime configuration for tracing, redaction, loop detection, and guardrails."""
 
     redact: bool
     redact_keys: list[str]
@@ -39,6 +41,7 @@ class AgentDbgConfig:
     loop_window: int
     loop_repetitions: int
     data_dir: Path
+    guardrails: GuardrailParams
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
@@ -88,6 +91,136 @@ def _apply_yaml(config: dict[str, Any], key: str, default: Any) -> Any:
     return default
 
 
+def _guardrails_from_dict(data: dict[str, Any] | None) -> GuardrailParams:
+    """Build GuardrailParams from a YAML guardrails section (user or project)."""
+    if not data or not isinstance(data, dict):
+        return GuardrailParams()
+    stop_on_loop = bool(data.get("stop_on_loop", False))
+    stop_on_loop_min_repetitions = 3
+    try:
+        stop_on_loop_min_repetitions = max(
+            2, int(data.get("stop_on_loop_min_repetitions", 3))
+        )
+    except (TypeError, ValueError):
+        pass
+    max_llm_calls = None
+    try:
+        v = data.get("max_llm_calls")
+        if v is not None:
+            max_llm_calls = max(0, int(v))
+    except (TypeError, ValueError):
+        pass
+    max_tool_calls = None
+    try:
+        v = data.get("max_tool_calls")
+        if v is not None:
+            max_tool_calls = max(0, int(v))
+    except (TypeError, ValueError):
+        pass
+    max_events = None
+    try:
+        v = data.get("max_events")
+        if v is not None:
+            max_events = max(0, int(v))
+    except (TypeError, ValueError):
+        pass
+    max_duration_s = None
+    try:
+        v = data.get("max_duration_s")
+        if v is not None:
+            max_duration_s = max(0.0, float(v))
+    except (TypeError, ValueError):
+        pass
+    return GuardrailParams(
+        stop_on_loop=stop_on_loop,
+        stop_on_loop_min_repetitions=stop_on_loop_min_repetitions,
+        max_llm_calls=max_llm_calls,
+        max_tool_calls=max_tool_calls,
+        max_events=max_events,
+        max_duration_s=max_duration_s,
+    )
+
+
+def _apply_env_to_guardrails(params: GuardrailParams) -> GuardrailParams:
+    """Override guardrail params from environment variables."""
+    if "AGENTDBG_STOP_ON_LOOP" in os.environ:
+        params = GuardrailParams(
+            stop_on_loop=os.environ["AGENTDBG_STOP_ON_LOOP"].strip().lower()
+            in ("1", "true", "yes"),
+            stop_on_loop_min_repetitions=params.stop_on_loop_min_repetitions,
+            max_llm_calls=params.max_llm_calls,
+            max_tool_calls=params.max_tool_calls,
+            max_events=params.max_events,
+            max_duration_s=params.max_duration_s,
+        )
+    if "AGENTDBG_STOP_ON_LOOP_MIN_REPETITIONS" in os.environ:
+        try:
+            n = max(2, int(os.environ["AGENTDBG_STOP_ON_LOOP_MIN_REPETITIONS"]))
+            params = GuardrailParams(
+                stop_on_loop=params.stop_on_loop,
+                stop_on_loop_min_repetitions=n,
+                max_llm_calls=params.max_llm_calls,
+                max_tool_calls=params.max_tool_calls,
+                max_events=params.max_events,
+                max_duration_s=params.max_duration_s,
+            )
+        except ValueError:
+            pass
+    if "AGENTDBG_MAX_LLM_CALLS" in os.environ:
+        try:
+            n = max(0, int(os.environ["AGENTDBG_MAX_LLM_CALLS"]))
+            params = GuardrailParams(
+                stop_on_loop=params.stop_on_loop,
+                stop_on_loop_min_repetitions=params.stop_on_loop_min_repetitions,
+                max_llm_calls=n,
+                max_tool_calls=params.max_tool_calls,
+                max_events=params.max_events,
+                max_duration_s=params.max_duration_s,
+            )
+        except ValueError:
+            pass
+    if "AGENTDBG_MAX_TOOL_CALLS" in os.environ:
+        try:
+            n = max(0, int(os.environ["AGENTDBG_MAX_TOOL_CALLS"]))
+            params = GuardrailParams(
+                stop_on_loop=params.stop_on_loop,
+                stop_on_loop_min_repetitions=params.stop_on_loop_min_repetitions,
+                max_llm_calls=params.max_llm_calls,
+                max_tool_calls=n,
+                max_events=params.max_events,
+                max_duration_s=params.max_duration_s,
+            )
+        except ValueError:
+            pass
+    if "AGENTDBG_MAX_EVENTS" in os.environ:
+        try:
+            n = max(0, int(os.environ["AGENTDBG_MAX_EVENTS"]))
+            params = GuardrailParams(
+                stop_on_loop=params.stop_on_loop,
+                stop_on_loop_min_repetitions=params.stop_on_loop_min_repetitions,
+                max_llm_calls=params.max_llm_calls,
+                max_tool_calls=params.max_tool_calls,
+                max_events=n,
+                max_duration_s=params.max_duration_s,
+            )
+        except ValueError:
+            pass
+    if "AGENTDBG_MAX_DURATION_S" in os.environ:
+        try:
+            n = max(0.0, float(os.environ["AGENTDBG_MAX_DURATION_S"]))
+            params = GuardrailParams(
+                stop_on_loop=params.stop_on_loop,
+                stop_on_loop_min_repetitions=params.stop_on_loop_min_repetitions,
+                max_llm_calls=params.max_llm_calls,
+                max_tool_calls=params.max_tool_calls,
+                max_events=params.max_events,
+                max_duration_s=n,
+            )
+        except ValueError:
+            pass
+    return params
+
+
 def load_config(project_root: Path | None = None) -> AgentDbgConfig:
     """
     Load AgentDbgConfig with precedence (highest first):
@@ -114,6 +247,10 @@ def load_config(project_root: Path | None = None) -> AgentDbgConfig:
         loop_repetitions = _apply_yaml(user_cfg, "loop_repetitions", loop_repetitions)
         data_dir = _apply_yaml(user_cfg, "data_dir", data_dir)
 
+    guardrails = GuardrailParams()
+    if user_cfg and "guardrails" in user_cfg:
+        guardrails = _guardrails_from_dict(user_cfg.get("guardrails"))
+
     # 2. Project config (overrides user)
     # TODO: `cwd()` might not be the best default for CLI root:
     #       If the tool is called from another location, CWD
@@ -129,6 +266,8 @@ def load_config(project_root: Path | None = None) -> AgentDbgConfig:
         loop_window = _apply_yaml(proj_cfg, "loop_window", loop_window)
         loop_repetitions = _apply_yaml(proj_cfg, "loop_repetitions", loop_repetitions)
         data_dir = _apply_yaml(proj_cfg, "data_dir", data_dir)
+        if "guardrails" in proj_cfg:
+            guardrails = _guardrails_from_dict(proj_cfg.get("guardrails"))
 
     # 1. Env overrides (only when the key is explicitly set in the environment)
     if "AGENTDBG_REDACT" in os.environ:
@@ -165,6 +304,8 @@ def load_config(project_root: Path | None = None) -> AgentDbgConfig:
         if env_data:
             data_dir = Path(env_data).expanduser()
 
+    guardrails = _apply_env_to_guardrails(guardrails)
+
     return AgentDbgConfig(
         redact=redact,
         redact_keys=redact_keys,
@@ -172,4 +313,5 @@ def load_config(project_root: Path | None = None) -> AgentDbgConfig:
         loop_window=loop_window,
         loop_repetitions=loop_repetitions,
         data_dir=data_dir,
+        guardrails=guardrails,
     )

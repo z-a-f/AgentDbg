@@ -245,7 +245,7 @@ def test_trace_sets_name(monkeypatch, name, as_kwarg):
         def __exit__(self, exc_type, exc, tb):
             return False
 
-    def fake_run_context(*, name, func):
+    def fake_run_context(*, name, func, **_kwargs):
         captured["name"] = name
         captured["func"] = func
         return DummyContext()
