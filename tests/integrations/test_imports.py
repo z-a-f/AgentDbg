@@ -15,6 +15,7 @@ def has_module(name):
 INTEGRATIONS = [  # name, dependency
     ("crewai", "crewai"),
     ("langchain", "langchain_core"),
+    ("openai_agents", "agents"),
 ]
 
 
