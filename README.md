@@ -1,7 +1,5 @@
 # AgentDbg
 
-![Dashboard Brag](https://github.com/AgentDbg/AgentDbg/blob/main/docs/assets/dashboard.png?raw=True)
-
 **The step-through debugger for AI agents.**
 
 AgentDbg captures a structured trace of every agent run - LLM calls, tool calls, errors, state updates, loop warnings - and gives you a clean local timeline to see exactly what happened.
@@ -17,6 +15,9 @@ In under 10 minutes, you can inspect a full execution timeline with inputs, outp
 **No cloud. No accounts. No telemetry.**
 
 **Built-in run guardrails:** stop runaway debug sessions when an agent starts looping or exceeds your limits for LLM calls, tool calls, total events, or duration.
+
+<!-- ![Dashboard Brag](https://github.com/AgentDbg/AgentDbg/blob/main/docs/assets/guardrails.gif?raw=True) -->
+![Dashboard Brag](docs/assets/guardrails.gif)
 
 ## Get running in 5 minutes
 
@@ -48,7 +49,8 @@ agentdbg view
 
 A browser tab opens at `http://127.0.0.1:8712` showing the full run timeline - every event, with inputs, outputs, and timing.
 
-![Pure Pythonic Agent Timeline UI](https://github.com/AgentDbg/AgentDbg/blob/main/docs/assets/timeline-pure-python.gif?raw=True)
+<!-- ![Pure Pythonic Agent Timeline UI](https://github.com/AgentDbg/AgentDbg/blob/main/docs/assets/timeline-pure-python.gif?raw=True) -->
+![Pure Pythonic Agent Timeline UI](docs/assets/timeline-pure-python.gif)
 
 That's it. You're debugging.
 
