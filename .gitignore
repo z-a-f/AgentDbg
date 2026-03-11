@@ -1,3 +1,6 @@
+# Dynamic versioning
+agentdbg/_version.py
+
 # Local traces
 # We ignore all JSON and JSONL files except under `schemas`
 # This behavior might change in the future.

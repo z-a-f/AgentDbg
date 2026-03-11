@@ -54,12 +54,28 @@ openai = [
 [build-system]
 # Wheel/sdist include agentdbg/ (and thus agentdbg/ui_static/) by default.
 # Do not add only-include or only-packages that would exclude ui_static.
-requires = ["hatchling>=1.28.0,<1.29.0"]
+requires = ["hatchling>=1.28.0,<1.29.0", "versioningit"]
 build-backend = "hatchling.build"
 
 [tool.hatch.version]
-path = "agentdbg/_version.py"
-pattern = "^version = \"(?P<version>.*)\"$"
+default-version = "0.0.0+UNKNOWN"
+source = "versioningit"
+vcs = "git"
+next-version = "smallest-release"
+
+[tool.hatch.version.format]
+distance = "{base_version}.post{distance}"
+dirty = "{base_version}+local{distance}"
+distance-dirty = "{base_version}.post{distance}+local"
+
+[tool.hatch.version.write]
+file = "agentdbg/_version.py"
+template = """
+# This file is managed by dynamic versioning. Do not edit manually.
+version = "{version}""""
+
+# [tool.hatch.build]
+
 
 [tool.pytest.ini_options]
 addopts = "-ra"
